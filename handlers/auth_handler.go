@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -44,9 +45,8 @@ func NewAccount(service service.Account) Account {
 
 func (h *account) Add(c *gin.Context) {
 	var acc model.Account
-	if err := c.ShouldBindJSON(&acc); err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+
+	if !bindJSON(c, &acc) {
 		return
 	}
 
@@ -68,23 +68,18 @@ func (h *account) Block(c *gin.Context) {
 		AccountId string `json:"account_id" binding:"required"`
 		Until     string `json:"until" binding:"required"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	until, err := time.Parse("2006-01-02", req.Until)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+	var until time.Time
+	if !parseTime(c, "2006-01-02", req.Until, &until) {
 		return
 	}
 
-	accountId, err := uuid.Parse(req.AccountId)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account Id format"})
+	var accountId uuid.UUID
+	if !parseUUID(c, "account_id", req.AccountId, &accountId) {
 		return
 	}
 
@@ -102,10 +97,8 @@ func (h *account) Block(c *gin.Context) {
 }
 
 func (h *account) Delete(c *gin.Context) {
-	accountId, err := uuid.Parse(c.Param("account_id"))
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account Id"})
+	var accountId uuid.UUID
+	if !parseUUID(c, "account_id", c.Param("account_id"), &accountId) {
 		return
 	}
 
@@ -141,10 +134,8 @@ func (h *account) GetByEmail(c *gin.Context) {
 }
 
 func (h *account) GetById(c *gin.Context) {
-	accountId, err := uuid.Parse(c.Param("account_id"))
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid Id"})
+	var accountId uuid.UUID
+	if !parseUUID(c, "account_id", c.Param("account_id"), &accountId) {
 		return
 	}
 
@@ -163,9 +154,8 @@ func (h *account) Login(c *gin.Context) {
 		Email    string `json:"email" binding:"required,email"`
 		Password string `json:"password" binding:"required"`
 	}
-	if err := c.ShouldBindJSON(&credentials); err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+
+	if !bindJSON(c, &credentials) {
 		return
 	}
 
@@ -210,16 +200,13 @@ func (h *account) Unblock(c *gin.Context) {
 	var req struct {
 		Id string `json:"account_id" binding:"required"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	id, err := uuid.Parse(req.Id)
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account Id format"})
+	var id uuid.UUID
+	if !parseUUID(c, "account_id", req.Id, &id) {
 		return
 	}
 
@@ -239,16 +226,12 @@ func (h *account) UpdatePassword(c *gin.Context) {
 		NewPass string `json:"new_pass" binding:"required"`
 	}
 
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Println("failed to bind JSON", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	id, err := uuid.Parse(req.Id)
-	if err != nil {
-		log.Println("uuid.Parse", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account Id"})
+	var id uuid.UUID
+	if !parseUUID(c, "id", req.Id, &id) {
 		return
 	}
 
@@ -262,25 +245,22 @@ func (h *account) UpdatePassword(c *gin.Context) {
 }
 
 func (h *account) AddAPIKey(c *gin.Context) {
-	accountId, err := uuid.Parse(c.Param("account_id"))
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account Id"})
+	var accountId uuid.UUID
+	if parseUUID(c, "account_id", c.Param("account_id"), &accountId) {
 		return
 	}
 
-	var request struct {
+	var req struct {
 		ExpiresAt *time.Time `json:"expires_at"`
 	}
-	if err := c.ShouldBindJSON(&request); err != nil && err.Error() != "EOF" {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+
+	if !bindJSON(c, &req) {
 		return
 	}
 
 	expiresAt := time.Time{}
-	if request.ExpiresAt != nil {
-		expiresAt = *request.ExpiresAt
+	if req.ExpiresAt != nil {
+		expiresAt = *req.ExpiresAt
 	}
 
 	apiKey, errService := h.service.AddAPIKey(accountId, expiresAt)
@@ -318,16 +298,15 @@ func (h *account) AuthenticateByAPIKey(c *gin.Context) {
 }
 
 func (h *account) DeleteAPIKey(c *gin.Context) {
-	var request struct {
+	var req struct {
 		APIKey string `json:"api_key" binding:"required"`
 	}
-	if err := c.ShouldBindJSON(&request); err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	if err := h.service.DeleteAPIKey(request.APIKey); err != nil {
+	if err := h.service.DeleteAPIKey(req.APIKey); err != nil {
 		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -337,24 +316,20 @@ func (h *account) DeleteAPIKey(c *gin.Context) {
 }
 
 func (h *account) AddAccountRole(c *gin.Context) {
-	accountId, err := uuid.Parse(c.Param("account_id"))
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account Id"})
+	var accountId uuid.UUID
+	if !parseUUID(c, "account_id", c.Param("account_id"), &accountId) {
 		return
 	}
 
-	var request struct {
+	var req struct {
 		Role string `json:"role" binding:"required"`
 	}
 
-	if err := c.ShouldBindJSON(&request); err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	if err := h.service.AddAccountRole(accountId, request.Role); err != nil {
+	if err := h.service.AddAccountRole(accountId, req.Role); err != nil {
 		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -364,24 +339,20 @@ func (h *account) AddAccountRole(c *gin.Context) {
 }
 
 func (h *account) DeleteAccountRole(c *gin.Context) {
-	accountId, err := uuid.Parse(c.Param("account_id"))
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account Id"})
+	var accountId uuid.UUID
+	if !parseUUID(c, "account_id", c.Param("account_id"), &accountId) {
 		return
 	}
 
-	var request struct {
+	var req struct {
 		Role string `json:"role" binding:"required"`
 	}
 
-	if err := c.ShouldBindJSON(&request); err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+	if !bindJSON(c, &req) {
 		return
 	}
 
-	if err := h.service.DeleteAccountRole(accountId, request.Role); err != nil {
+	if err := h.service.DeleteAccountRole(accountId, req.Role); err != nil {
 		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "deleting role from account failed"})
 		return
@@ -391,10 +362,8 @@ func (h *account) DeleteAccountRole(c *gin.Context) {
 }
 
 func (h *account) FindRolesByAccount(c *gin.Context) {
-	accountId, err := uuid.Parse(c.Param("account_id"))
-	if err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid account Id"})
+	var accountId uuid.UUID
+	if !parseUUID(c, "account_id", c.Param("account_id"), &accountId) {
 		return
 	}
 
@@ -410,9 +379,7 @@ func (h *account) FindRolesByAccount(c *gin.Context) {
 
 func (h *account) UpdateRoles(c *gin.Context) {
 	var req map[string]interface{}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		log.Println(err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data"})
+	if !bindJSON(c, &req) {
 		return
 	}
 
@@ -423,4 +390,37 @@ func (h *account) UpdateRoles(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "roles updated"})
+}
+
+func bindJSON(c *gin.Context, jsonToBind interface{}) bool {
+	if err := c.ShouldBindJSON(&jsonToBind); err != nil {
+		log.Printf("invalid JSON data: %s", err.Error())
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid JSON data: %s", err.Error())})
+		return false
+	}
+	return true
+}
+
+func parseUUID(c *gin.Context, jsonField string, txtToParse string, dest *uuid.UUID) bool {
+	parsedID, err := uuid.Parse(txtToParse)
+	if err != nil {
+		log.Printf("failed to parse %s: %v", jsonField, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid value: %s", jsonField)})
+		return false
+	}
+
+	*dest = parsedID
+	return true
+}
+
+func parseTime(c *gin.Context, timeFormat string, txtToParse string, dest *time.Time) bool {
+	res, err := time.Parse(timeFormat, txtToParse)
+	if err != nil {
+		log.Printf("invalid input: %v", txtToParse)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		return false
+	}
+
+	*dest = res
+	return true
 }
