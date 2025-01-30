@@ -219,7 +219,7 @@ func (r *account) Find() ([]*model.Account, error) {
 			&acc.Deleted,
 		); scanErr != nil {
 			log.Printf("failed to scan rows FIND_ACCOUNTS: %v", scanErr)
-			return nil, errors.New("failed to find accounts, scan error")
+			return nil, errors.New("failed to find accounts")
 		}
 
 		if blocked.Valid {
@@ -241,7 +241,7 @@ func (r *account) Find() ([]*model.Account, error) {
 
 	if rowsErr := rows.Err(); rowsErr != nil {
 		log.Printf("error iterating over accounts: %v", rowsErr)
-		return nil, errors.New("failed to find accounts, error in rows")
+		return nil, errors.New("failed to find accounts")
 	}
 
 	return accounts, nil

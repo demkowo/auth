@@ -258,6 +258,7 @@ curl -X POST http://localhost:5000/api/v1/auth/roles/add/<ACCOUNT_ID> \
 
 ### Code Organization & Testing
 - Add unit tests and integration tests to ensure reliability.
+- Add testing tools for future and already existing test cases.
 - Implement a CI/CD pipeline with code coverage and static analysis checks.
 
 ## Getting Started

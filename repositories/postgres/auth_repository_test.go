@@ -101,7 +101,7 @@ func Test_NewAccount_Success(t *testing.T) {
 	}
 }
 
-func Test_Add_blockedIsZero(t *testing.T) {
+func Test_Add_accBlockedIsZero(t *testing.T) {
 	clearMock()
 	acc.Blocked = time.Time{}
 	expectedValue["index"] = 6
@@ -117,11 +117,11 @@ func Test_Add_blockedIsZero(t *testing.T) {
 	err := a.Add(&acc)
 
 	if err != nil {
-		t.Fatal("expected no errors")
+		t.Fatal("unexpected error:", err)
 	}
 }
 
-func Test_Add_blockedIsNotZero(t *testing.T) {
+func Test_Add_accBlockedIsNotZero(t *testing.T) {
 	clearMock()
 
 	tn := time.Now()
@@ -139,12 +139,14 @@ func Test_Add_blockedIsNotZero(t *testing.T) {
 	err := a.Add(&acc)
 
 	if err != nil {
-		t.Fatal("expected no errors")
+		t.Fatal("unexpected error:", err)
 	}
 }
-func Test_Add_DuplicatedRecord(t *testing.T) {
+func Test_Add_DuplicatedNicknameError(t *testing.T) {
 	clearMock()
 	// TODO: make possible adding roles while creating an account
+
+	expectedErr := "account with the given nickname already exists"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: ADD_ACCOUNT,
@@ -154,31 +156,39 @@ func Test_Add_DuplicatedRecord(t *testing.T) {
 	})
 
 	err := a.Add(&acc)
-	if err == nil {
-		t.Fatal("expected to get error")
-	}
 
-	if err.Error() != errors.New("account with the given nickname already exists").Error() {
-		t.Fatal("expected error response: 'account with the given nickname already exists' while received:", err)
+	if err == nil {
+		t.Fatal("expected error but received nil")
+	}
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_Add_ExecError(t *testing.T) {
+func Test_Add_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to create account"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: ADD_ACCOUNT,
 		Args:  []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, nil, acc.Deleted},
 
-		Error: errors.New("test error"),
+		Error: errors.New("exec error"),
 	})
 
 	err := a.Add(&acc)
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to create account").Error() {
-		t.Fatalf("expected error response:\n'failed to create account' while received:\n'%s'", err.Error())
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -193,12 +203,15 @@ func Test_Add_Success(t *testing.T) {
 	err := a.Add(&acc)
 
 	if err != nil {
-		t.Fatal("expected no errors")
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_Delete_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to delete account"
+
 	dbclient.AddMock(dbclient.Mock{
 		Query: DELETE_ACCOUNT,
 		Args:  []interface{}{time.Now(), acc.Id},
@@ -209,10 +222,13 @@ func Test_Delete_Error(t *testing.T) {
 	err := a.Delete(acc.Id)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to delete account").Error() {
-		t.Fatalf("expected error response:\n'failed to delete account' while received:\n'%s'", err.Error())
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -226,12 +242,14 @@ func Test_Delete_Success(t *testing.T) {
 	err := a.Delete(acc.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
-func Test_Find_QueryError(t *testing.T) {
+func Test_Find_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to find accounts"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: FIND_ACCOUNTS,
@@ -249,15 +267,20 @@ func Test_Find_QueryError(t *testing.T) {
 	_, err := a.Find()
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to find accounts").Error() {
-		t.Fatal("expected error response: 'failed to find accounts' while received:", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
 func Test_Find_ScanError(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to find accounts"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: FIND_ACCOUNTS,
@@ -275,14 +298,17 @@ func Test_Find_ScanError(t *testing.T) {
 	_, err := a.Find()
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to find accounts, scan error").Error() {
-		t.Fatal("expected error response: 'failed to find accounts, scan error' while received:", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_Find_blockedValid(t *testing.T) {
+func Test_Find_blockedIsValid(t *testing.T) {
 	clearMock()
 
 	tn := time.Now()
@@ -305,11 +331,11 @@ func Test_Find_blockedValid(t *testing.T) {
 	_, err := a.Find()
 
 	if err != nil {
-		t.Fatal("expected no errors")
+		t.Fatal("unexpected error:", err)
 	}
 }
 
-func Test_Find_blockedNotValid(t *testing.T) {
+func Test_Find_blockedIsNotValid(t *testing.T) {
 	clearMock()
 
 	blocked.Valid = false
@@ -330,7 +356,7 @@ func Test_Find_blockedNotValid(t *testing.T) {
 	_, err := a.Find()
 
 	if err != nil {
-		t.Fatal("expected no errors")
+		t.Fatal("unexpected error:", err)
 	}
 }
 
@@ -355,12 +381,14 @@ func Test_Find_CheckRoles(t *testing.T) {
 	_, err := a.Find()
 
 	if err != nil {
-		t.Fatal("expected no errors")
+		t.Fatal("unexpected error:", err)
 	}
 }
 
-func Test_Find_RowsErrors(t *testing.T) {
+func Test_Find_RowsError(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to find accounts"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: FIND_ACCOUNTS,
@@ -378,11 +406,13 @@ func Test_Find_RowsErrors(t *testing.T) {
 	_, err := a.Find()
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-
-	if err.Error() != errors.New("failed to find accounts, error in rows").Error() {
-		t.Fatal("expected error response: 'failed to find accounts' while received:", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -403,12 +433,14 @@ func Test_Find_Success(t *testing.T) {
 	_, err := a.Find()
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_GetByEmail_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to get account"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: GET_ACCOUNT_BY_EMAIL,
@@ -425,12 +457,20 @@ func Test_GetByEmail_Error(t *testing.T) {
 	_, err := a.GetByEmail(acc.Email)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
+	}
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_GetByEmail_NoAccountError(t *testing.T) {
+func Test_GetByEmail_NotFoundError(t *testing.T) {
 	clearMock()
+
+	expectedErr := fmt.Sprintf("account with email %s not found", acc.Email)
 
 	dbclient.AddMock(dbclient.Mock{
 		Args:  []interface{}{acc.Email},
@@ -447,14 +487,17 @@ func Test_GetByEmail_NoAccountError(t *testing.T) {
 	_, err := a.GetByEmail(acc.Email)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != fmt.Errorf("account with email %s not found", acc.Email).Error() {
-		t.Fatalf("expected to get error 'account with email %s not found' while received '%v'", acc.Email, err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_GetByEmail_BlockedValid(t *testing.T) {
+func Test_GetByEmail_blockedIsValid(t *testing.T) {
 	clearMock()
 
 	tn := time.Now()
@@ -474,17 +517,21 @@ func Test_GetByEmail_BlockedValid(t *testing.T) {
 	res, err := a.GetByEmail(acc.Email)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 	if res.Blocked != tn {
-		t.Fatalf("when blocked.Valid = true\nexpected value: %v\nreceived value: %v", tn, res.Blocked)
+		t.Fatalf(`
+invalid response: 
+expected res.Blocked: '%v' 
+received res.Blocked: '%v'`, tn, res.Blocked)
 	}
 }
 
-func Test_GetByEmail_BlockedNotValid(t *testing.T) {
+func Test_GetByEmail_blockedIsNotValid(t *testing.T) {
 	clearMock()
 
 	blocked.Valid = false
+	expectedBlockedTime := time.Time{}
 
 	dbclient.AddMock(dbclient.Mock{
 		Args:  []interface{}{acc.Email},
@@ -499,11 +546,13 @@ func Test_GetByEmail_BlockedNotValid(t *testing.T) {
 	res, err := a.GetByEmail(acc.Email)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
-	expectedTime := time.Time{}
-	if res.Blocked != expectedTime {
-		t.Fatalf("when blocked.Valid = false\nexpected value: %v\nreceived value: %v", expectedTime, res.Blocked)
+	if res.Blocked != expectedBlockedTime {
+		t.Fatalf(`
+invalid response: 
+expected res.Blocked: '%v' 
+received res.Blocked: '%v'`, expectedBlockedTime, res.Blocked)
 	}
 }
 
@@ -512,6 +561,10 @@ func Test_GetByEmail_CheckRoles(t *testing.T) {
 
 	acc.Id = uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3")
 	roles = append(roles, "admin", "tester")
+	expectedRoles := []model.AccountRoles{
+		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"},
+		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "tester"},
+	}
 
 	dbclient.AddMock(dbclient.Mock{
 		Args:  []interface{}{acc.Email},
@@ -526,14 +579,13 @@ func Test_GetByEmail_CheckRoles(t *testing.T) {
 	res, err := a.GetByEmail(acc.Email)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
-	}
-	expectedRoles := []model.AccountRoles{
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"},
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "tester"},
+		t.Fatal("unexpected error:", err)
 	}
 	if !reflect.DeepEqual(res.Roles, expectedRoles) {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatalf(`
+invalid response: 
+expected res.Roles: '%v' 
+received res.Roles: '%v'`, expectedRoles, res.Roles)
 	}
 }
 
@@ -553,12 +605,14 @@ func Test_GetByEmail_Success(t *testing.T) {
 	_, err := a.GetByEmail(acc.Email)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_GetById_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to get account"
 
 	dbclient.AddMock(dbclient.Mock{
 		Args:  []interface{}{acc.Id},
@@ -575,15 +629,20 @@ func Test_GetById_Error(t *testing.T) {
 	_, err := a.GetById(acc.Id)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to get account").Error() {
-		t.Fatalf("expected to get error 'failed to get account' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_GetById_NoRowsError(t *testing.T) {
+func Test_GetById_NotFoundError(t *testing.T) {
 	clearMock()
+
+	expectedErr := "account not found"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: GET_ACCOUNT_BY_ID,
@@ -600,14 +659,17 @@ func Test_GetById_NoRowsError(t *testing.T) {
 	_, err := a.GetById(acc.Id)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("account not found").Error() {
-		t.Fatalf("expected to get error 'account not found' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_GetById_BlockedValid(t *testing.T) {
+func Test_GetById_blockedIsValid(t *testing.T) {
 	clearMock()
 
 	tn := time.Now()
@@ -627,17 +689,21 @@ func Test_GetById_BlockedValid(t *testing.T) {
 	res, err := a.GetById(acc.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 	if res.Blocked != tn {
-		t.Fatalf("when blocked.Valid = true\nexpected value: %v\nreceived value: %v", tn, res.Blocked)
+		t.Fatalf(`
+invalid response: 
+expected res.Blocked: '%v' 
+received res.Blocked: '%v'`, tn, res.Blocked)
 	}
 }
 
-func Test_GetById_BlockedNotValid(t *testing.T) {
+func Test_GetById_blockedIsNotValid(t *testing.T) {
 	clearMock()
 
 	blocked.Valid = true
+	expectedBlockedTime := time.Time{}
 
 	dbclient.AddMock(dbclient.Mock{
 		Args:  []interface{}{acc.Id},
@@ -652,11 +718,13 @@ func Test_GetById_BlockedNotValid(t *testing.T) {
 	res, err := a.GetById(acc.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
-	expectedTime := time.Time{}
-	if res.Blocked != expectedTime {
-		t.Fatalf("when blocked.Valid = false\nexpected value: %v\nreceived value: %v", expectedTime, res.Blocked)
+	if res.Blocked != expectedBlockedTime {
+		t.Fatalf(`
+invalid response: 
+expected res.Blocked: '%v' 
+received res.Blocked: '%v'`, expectedBlockedTime, res.Blocked)
 	}
 }
 
@@ -665,6 +733,10 @@ func Test_GetById_CheckRoles(t *testing.T) {
 
 	acc.Id = uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3")
 	roles = append(roles, "admin", "tester")
+	expectedRoles := []model.AccountRoles{
+		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"},
+		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "tester"},
+	}
 
 	dbclient.AddMock(dbclient.Mock{
 		Args:  []interface{}{acc.Id},
@@ -679,14 +751,13 @@ func Test_GetById_CheckRoles(t *testing.T) {
 	res, err := a.GetById(acc.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
-	}
-	expectedRoles := []model.AccountRoles{
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"},
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "tester"},
+		t.Fatal("unexpected error:", err)
 	}
 	if !reflect.DeepEqual(res.Roles, expectedRoles) {
-		t.Fatalf("roles in response are not as expected\nexpected: %v\nreceived: %v", expectedRoles, res.Roles)
+		t.Fatalf(`
+invalid response: 
+expected res.Roles: '%v' 
+received res.Roles: '%v'`, expectedRoles, res.Roles)
 	}
 }
 
@@ -695,6 +766,10 @@ func Test_GetById_CheckApiKeys(t *testing.T) {
 	clearMock()
 
 	apiKeys = append(apiKeys, "key1", "key2")
+	expectedKeys := []model.APIKey{
+		{Key: "key1", AccountId: acc.Id},
+		{Key: "key2", AccountId: acc.Id},
+	}
 
 	dbclient.AddMock(dbclient.Mock{
 		Args:  []interface{}{acc.Id},
@@ -709,14 +784,13 @@ func Test_GetById_CheckApiKeys(t *testing.T) {
 	res, err := a.GetById(acc.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
-	}
-	expectedKeys := []model.APIKey{
-		{Key: "key1", AccountId: acc.Id},
-		{Key: "key2", AccountId: acc.Id},
+		t.Fatal("unexpected error:", err)
 	}
 	if !reflect.DeepEqual(res.APIKeys, expectedKeys) {
-		t.Fatalf("APIKeys in response are not as expected\nexpected: %v\nreceived: %v", expectedKeys, res.APIKeys)
+		t.Fatalf(`
+invalid response: 
+expected res.APIKeys: '%v' 
+received res.APIKeys: '%v'`, expectedKeys, res.APIKeys)
 	}
 }
 
@@ -736,11 +810,11 @@ func Test_GetById_Success(t *testing.T) {
 	_, err := a.GetById(acc.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
-func Test_Update_BlockedIsZero(t *testing.T) {
+func Test_Update_accBlockedIsZero(t *testing.T) {
 	clearMock()
 
 	acc.Blocked = time.Time{}
@@ -762,11 +836,11 @@ func Test_Update_BlockedIsZero(t *testing.T) {
 	err := a.Update(&acc)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
-func Test_Update_BlockedIsNotZero(t *testing.T) {
+func Test_Update_accBlockedIsNotZero(t *testing.T) {
 	clearMock()
 
 	tn := time.Now()
@@ -789,12 +863,14 @@ func Test_Update_BlockedIsNotZero(t *testing.T) {
 	err := a.Update(&acc)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_Update_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to update account"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: EDIT_ACCOUNT,
@@ -811,10 +887,13 @@ func Test_Update_Error(t *testing.T) {
 	err := a.Update(&acc)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to update account").Error() {
-		t.Fatalf("expected to get error 'failed to update account' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -834,12 +913,14 @@ func Test_Update_Success(t *testing.T) {
 	err := a.Update(&acc)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_UpdatePassword_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to change password"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: EDIT_ACCOUNT_PASSWORD,
@@ -851,10 +932,13 @@ func Test_UpdatePassword_Error(t *testing.T) {
 	err := a.UpdatePassword(acc.Id, "newPassword")
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to change password").Error() {
-		t.Fatalf("expected to get error 'failed to change password' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -869,12 +953,14 @@ func Test_UpdatePassword_Success(t *testing.T) {
 	err := a.UpdatePassword(acc.Id, "newPassword")
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_AddAPIKey_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to create API key"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: ADD_APIKEY,
@@ -886,14 +972,18 @@ func Test_AddAPIKey_Error(t *testing.T) {
 	err := a.AddAPIKey(&apiKey)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to create API key").Error() {
-		t.Fatalf("expected to get error 'failed to create API key' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_AddAPIKey_ExpiresIsZero(t *testing.T) {
+func Test_AddAPIKey_apiKeyExpiresAtIsZero(t *testing.T) {
+	// TODO: checkExpectedValue to return error instead of t.Fatal
 	clearMock()
 
 	apiKey.ExpiresAt = time.Time{}
@@ -910,12 +1000,12 @@ func Test_AddAPIKey_ExpiresIsZero(t *testing.T) {
 	err := a.AddAPIKey(&apiKey)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 
 }
 
-func Test_AddAPIKey_ExpiresIsNotZero(t *testing.T) {
+func Test_AddAPIKey_apiKeyExpiresAtIsNotZero(t *testing.T) {
 	clearMock()
 
 	tn := time.Now()
@@ -933,7 +1023,7 @@ func Test_AddAPIKey_ExpiresIsNotZero(t *testing.T) {
 	err := a.AddAPIKey(&apiKey)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
@@ -948,12 +1038,14 @@ func Test_AddAPIKey_Success(t *testing.T) {
 	err := a.AddAPIKey(&apiKey)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_DeleteAPIKey_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to delete API key"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: DELETE_APIKEY,
@@ -965,10 +1057,13 @@ func Test_DeleteAPIKey_Error(t *testing.T) {
 	err := a.DeleteAPIKey(apiKey.Key)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to delete API key").Error() {
-		t.Fatalf("expected to get error 'failed to delete API key' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -983,12 +1078,14 @@ func Test_DeleteAPIKey_Success(t *testing.T) {
 	err := a.DeleteAPIKey(apiKey.Key)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_GetAPIKeyById_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to get API Key"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: GET_APIKEY_BY_Id,
@@ -1000,15 +1097,20 @@ func Test_GetAPIKeyById_Error(t *testing.T) {
 	_, err := a.GetAPIKeyById(apiKey.Id)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to get API Key").Error() {
-		t.Fatalf("expected to get error 'failed to get API Key' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_GetAPIKeyById_NotFound(t *testing.T) {
+func Test_GetAPIKeyById_NotFoundError(t *testing.T) {
 	clearMock()
+
+	expectedErr := "API key not found"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: GET_APIKEY_BY_Id,
@@ -1020,10 +1122,13 @@ func Test_GetAPIKeyById_NotFound(t *testing.T) {
 	_, err := a.GetAPIKeyById(apiKey.Id)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("API key not found").Error() {
-		t.Fatalf("expected to get error 'API key not found' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -1047,10 +1152,13 @@ func Test_GetAPIKeyById_ExpiresAtIsValid(t *testing.T) {
 	res, err := a.GetAPIKeyById(apiKey.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 	if !reflect.DeepEqual(res.ExpiresAt, expiresAt.Time) {
-		t.Fatalf("invalid value for expiresAt\nexpected: %v\nreceived: %v", res.ExpiresAt, expiresAt.Time)
+		t.Fatalf(`
+invalid response: 
+expected res.ExpiresAt: '%v' 
+received res.ExpiresAt: '%v'`, expiresAt.Time, res.ExpiresAt)
 	}
 }
 
@@ -1058,6 +1166,7 @@ func Test_GetAPIKeyById_ExpiresAtIsNotValid(t *testing.T) {
 	clearMock()
 
 	expiresAt.Valid = false
+	expectedTime := time.Time{}
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: GET_APIKEY_BY_Id,
@@ -1072,13 +1181,16 @@ func Test_GetAPIKeyById_ExpiresAtIsNotValid(t *testing.T) {
 	res, err := a.GetAPIKeyById(apiKey.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
-	expectedTime := time.Time{}
 	if !reflect.DeepEqual(res.ExpiresAt, expectedTime) {
-		t.Fatalf("invalid value for expiresAt\nexpected: %v\nreceived: %v", res.ExpiresAt, expectedTime)
+		t.Fatalf(`
+invalid response: 
+expected res.ExpiresAt: '%v' 
+received res.ExpiresAt: '%v'`, expectedTime, res.ExpiresAt)
 	}
 }
+
 func Test_GetAPIKeyById_Success(t *testing.T) {
 	clearMock()
 
@@ -1095,12 +1207,14 @@ func Test_GetAPIKeyById_Success(t *testing.T) {
 	_, err := a.GetAPIKeyById(apiKey.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_GetAPIKeyByKey_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to get API Key"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: GET_APIKEY_BY_KEY,
@@ -1112,15 +1226,20 @@ func Test_GetAPIKeyByKey_Error(t *testing.T) {
 	_, err := a.GetAPIKeyByKey(apiKey.Key)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to get API Key").Error() {
-		t.Fatalf("expected to get error 'failed to get API Key' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_GetAPIKeyByKey_NotFound(t *testing.T) {
+func Test_GetAPIKeyByKey_NotFoundError(t *testing.T) {
 	clearMock()
+
+	expectedErr := "API key not found"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: GET_APIKEY_BY_KEY,
@@ -1132,34 +1251,17 @@ func Test_GetAPIKeyByKey_NotFound(t *testing.T) {
 	_, err := a.GetAPIKeyByKey(apiKey.Key)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("API key not found").Error() {
-		t.Fatalf("expected to get error 'API key not found' while received '%v'", err)
-	}
-}
-
-func Test_GetAPIKeyByKey_Success(t *testing.T) {
-	clearMock()
-
-	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_KEY,
-		Args:  []interface{}{apiKey.Key},
-
-		Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
-		Rows: [][]interface{}{
-			{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt},
-		},
-	})
-
-	_, err := a.GetAPIKeyByKey(apiKey.Key)
-
-	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_GetAPIKeyByKey_ExpiredAtIsValid(t *testing.T) {
+func Test_GetAPIKeyByKey_expiresAtIsValid(t *testing.T) {
 	clearMock()
 
 	tn := time.Now()
@@ -1179,16 +1281,20 @@ func Test_GetAPIKeyByKey_ExpiredAtIsValid(t *testing.T) {
 	res, err := a.GetAPIKeyByKey(apiKey.Key)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 	if !reflect.DeepEqual(res.ExpiresAt, expiresAt.Time) {
-		t.Fatalf("invalid value for expiresAt\nexpected: %v\nreceived: %v", res.ExpiresAt, expiresAt.Time)
+		t.Fatalf(`
+invalid response: 
+expected res.ExpiresAt: '%v' 
+received res.ExpiresAt: '%v'`, expiresAt.Time, res.ExpiresAt)
 	}
 }
-func Test_GetAPIKeyByKey_ExpiredAtIsNotValid(t *testing.T) {
+func Test_GetAPIKeyByKey_expiresAtIsNotValid(t *testing.T) {
 	clearMock()
 
 	expiresAt.Valid = false
+	expectedTime := time.Time{}
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: GET_APIKEY_BY_KEY,
@@ -1203,16 +1309,40 @@ func Test_GetAPIKeyByKey_ExpiredAtIsNotValid(t *testing.T) {
 	res, err := a.GetAPIKeyByKey(apiKey.Key)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
-	expectedTime := time.Time{}
 	if !reflect.DeepEqual(res.ExpiresAt, expectedTime) {
-		t.Fatalf("invalid value for expiresAt\nexpected: %v\nreceived: %v", res.ExpiresAt, expectedTime)
+		t.Fatalf(`
+invalid response: 
+expected res.ExpiresAt: '%v' 
+received res.ExpiresAt: '%v'`, expectedTime, res.ExpiresAt)
+	}
+}
+
+func Test_GetAPIKeyByKey_Success(t *testing.T) {
+	clearMock()
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: GET_APIKEY_BY_KEY,
+		Args:  []interface{}{apiKey.Key},
+
+		Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
+		Rows: [][]interface{}{
+			{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt},
+		},
+	})
+
+	_, err := a.GetAPIKeyByKey(apiKey.Key)
+
+	if err != nil {
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_AddAccountRole_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to add role to account"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: ADD_ACCOUNT_ROLE,
@@ -1224,15 +1354,20 @@ func Test_AddAccountRole_Error(t *testing.T) {
 	err := a.AddAccountRole(accountRoles.Id, accountRoles.Name)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to add role to account").Error() {
-		t.Fatalf("expected to get error 'failed to add role to account' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
-func Test_AddAccountRole_DuplicateError(t *testing.T) {
+func Test_AddAccountRole_DuplicatedRoleError(t *testing.T) {
 	clearMock()
+
+	expectedErr := "this role is already assigned to the account"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: ADD_ACCOUNT_ROLE,
@@ -1244,10 +1379,13 @@ func Test_AddAccountRole_DuplicateError(t *testing.T) {
 	err := a.AddAccountRole(accountRoles.Id, accountRoles.Name)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("this role is already assigned to the account").Error() {
-		t.Fatalf("expected to get error 'this role is already assigned to the account' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -1262,12 +1400,14 @@ func Test_AddAccountRole_Success(t *testing.T) {
 	err := a.AddAccountRole(accountRoles.Id, accountRoles.Name)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_DeleteAccountRole_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to delete role from account"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: DELETE_ACCOUNT_ROLE,
@@ -1279,10 +1419,13 @@ func Test_DeleteAccountRole_Error(t *testing.T) {
 	err := a.DeleteAccountRole(accountRoles.Id, accountRoles.Name)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to delete role from account").Error() {
-		t.Fatalf("expected to get error 'failed to delete role from account' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -1297,12 +1440,14 @@ func Test_DeleteAccountRole_Success(t *testing.T) {
 	err := a.DeleteAccountRole(accountRoles.Id, accountRoles.Name)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
 
 func Test_FindRolesByAccount_Error(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to find roles"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: FIND_ROLES_BY_ACCOUNT_Id,
@@ -1314,17 +1459,22 @@ func Test_FindRolesByAccount_Error(t *testing.T) {
 	_, err := a.FindRolesByAccount(accountRoles.Id)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to find roles").Error() {
-		t.Fatalf("expected to get error 'failed to find roles' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
 func Test_FindRolesByAccount_ScanError(t *testing.T) {
+	// TODO: make sure that if there are no rows and records, record not foud error will be send back
 	clearMock()
 
-	// TODO: make sure that if there are no rows and records, record not foud error will be send back
+	expectedErr := "failed to find roles"
+
 	dbclient.AddMock(dbclient.Mock{
 		Query: FIND_ROLES_BY_ACCOUNT_Id,
 		Args:  []interface{}{accountRoles.Id},
@@ -1340,10 +1490,13 @@ func Test_FindRolesByAccount_ScanError(t *testing.T) {
 	_, err := a.FindRolesByAccount(accountRoles.Id)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to find roles").Error() {
-		t.Fatalf("expected to get error 'failed to find roles' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -1352,6 +1505,10 @@ func Test_FindRolesByAccount_CheckRoles(t *testing.T) {
 
 	acc.Id = uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3")
 	roles = append(roles, "admin", "tester")
+	expectedRoles := []model.AccountRoles{
+		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"},
+		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "tester"},
+	}
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: FIND_ROLES_BY_ACCOUNT_Id,
@@ -1366,19 +1523,20 @@ func Test_FindRolesByAccount_CheckRoles(t *testing.T) {
 	res, err := a.FindRolesByAccount(accountRoles.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
-	}
-	expectedRoles := []model.AccountRoles{
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"},
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "tester"},
+		t.Fatal("unexpected error:", err)
 	}
 	if !reflect.DeepEqual(res, expectedRoles) {
-		t.Fatalf("invalid roles\nexpected: %v\nreceived: %v", expectedRoles, res)
+		t.Fatalf(`
+invalid response: 
+expected response: '%v' 
+received response: '%v'`, expectedRoles, res)
 	}
 }
 
 func Test_FindRolesByAccount_RowsError(t *testing.T) {
 	clearMock()
+
+	expectedErr := "failed to find roles"
 
 	dbclient.AddMock(dbclient.Mock{
 		Query: FIND_ROLES_BY_ACCOUNT_Id,
@@ -1390,10 +1548,13 @@ func Test_FindRolesByAccount_RowsError(t *testing.T) {
 	_, err := a.FindRolesByAccount(accountRoles.Id)
 
 	if err == nil {
-		t.Fatal("expected to get error")
+		t.Fatal("expected error but received nil")
 	}
-	if err.Error() != errors.New("failed to find roles").Error() {
-		t.Fatalf("expected to get error 'failed to find roles' while received '%v'", err)
+	if err.Error() != errors.New(expectedErr).Error() {
+		t.Fatalf(`
+invalid error response: 
+expected: '%v' 
+received: '%v'`, expectedErr, err)
 	}
 }
 
@@ -1408,6 +1569,6 @@ func Test_FindRolesByAccount_Success(t *testing.T) {
 	_, err := a.FindRolesByAccount(accountRoles.Id)
 
 	if err != nil {
-		t.Fatal("expected no errors while received:", err)
+		t.Fatal("unexpected error:", err)
 	}
 }
