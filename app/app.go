@@ -1,15 +1,15 @@
 package app
 
 import (
-	"database/sql"
 	"log"
 	"os"
 
 	"github.com/gin-gonic/gin"
 
 	handler "github.com/demkowo/auth/handlers"
-	postgres "github.com/demkowo/auth/repositories"
+	postgres "github.com/demkowo/auth/repositories/postgres"
 	service "github.com/demkowo/auth/services"
+	dbclient "github.com/demkowo/dbclient/client"
 
 	_ "github.com/lib/pq"
 )
@@ -24,7 +24,7 @@ var (
 )
 
 func Start() {
-	db, err := sql.Open("postgres", dbConnection)
+	db, err := dbclient.Open("postgres", dbConnection)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -35,7 +35,7 @@ func Start() {
 	accountHandler := handler.NewAccount(accountService)
 	addAccountRoutes(accountHandler)
 
-	EnsureTablesExist(db)
+	CreateTables(db)
 
 	router.Run(portNumber)
 }

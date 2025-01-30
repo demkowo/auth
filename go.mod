@@ -3,6 +3,7 @@ module github.com/demkowo/auth
 go 1.21.5
 
 require (
+	github.com/demkowo/dbclient v0.0.0-20250130201503-f1f9fe514fd7
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/google/uuid v1.6.0

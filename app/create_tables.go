@@ -3,6 +3,9 @@ package app
 import (
 	"database/sql"
 	"fmt"
+	"log"
+
+	dbclient "github.com/demkowo/dbclient/client"
 )
 
 const (
@@ -43,54 +46,54 @@ const (
 	`
 )
 
-func EnsureTablesExist(db *sql.DB) error {
+func CreateTables(db dbclient.DbClient) error {
 	var tableName sql.NullString
 
 	err := db.QueryRow(ACCOUNT_TABLE_EXIST).Scan(&tableName)
 	if err != nil {
-		fmt.Printf("failed to execute db.QueryRow ACCOUNT_TABLE_EXIST: %v\n", err)
+		log.Printf("failed to execute db.QueryRow ACCOUNT_TABLE_EXIST: %v\n", err)
 		return err
 	}
 	if !tableName.Valid {
-		fmt.Println("table account does not exist, creating it")
+		log.Println("table account does not exist, creating it")
 		if _, err := db.Exec(CREATE_ACCOUNT_TABLE); err != nil {
 			fmt.Printf("failed to create account table: %v\n", err)
 			return err
 		}
 	} else {
-		fmt.Println("table account already exists")
+		log.Println("table account already exists")
 	}
 
 	err = db.QueryRow(ACCOUNT_ROLES_TABLE_EXIST).Scan(&tableName)
 	if err != nil {
-		fmt.Printf("failed to execute db.QueryRow ACCOUNT_ROLES_TABLE_EXIST: %v\n", err)
+		log.Printf("failed to execute db.QueryRow ACCOUNT_ROLES_TABLE_EXIST: %v\n", err)
 		return err
 	}
 	if !tableName.Valid {
-		fmt.Println("table account_roles does not exist, creating it")
+		log.Println("table account_roles does not exist, creating it")
 		if _, err := db.Exec(CREATE_ACCOUNT_ROLES_TABLE); err != nil {
-			fmt.Printf("failed to create account_roles table: %v\n", err)
+			log.Printf("failed to create account_roles table: %v\n", err)
 			return err
 		}
 	} else {
-		fmt.Println("table account_roles already exists")
+		log.Println("table account_roles already exists")
 	}
 
 	err = db.QueryRow(APIKEY_TABLE_EXIST).Scan(&tableName)
 	if err != nil {
-		fmt.Printf("failed to execute db.QueryRow APIKEY_TABLE_EXIST: %v\n", err)
+		log.Printf("failed to execute db.QueryRow APIKEY_TABLE_EXIST: %v\n", err)
 		return err
 	}
 	if !tableName.Valid {
-		fmt.Println("table api_keys does not exist, creating it")
+		log.Println("table api_keys does not exist, creating it")
 		if _, err := db.Exec(CREATE_APIKEY_TABLE); err != nil {
-			fmt.Printf("failed to create api_keys table: %v\n", err)
+			log.Printf("failed to create api_keys table: %v\n", err)
 			return err
 		}
 	} else {
-		fmt.Println("table api_keys already exists")
+		log.Println("table api_keys already exists")
 	}
 
-	fmt.Println("All authentication-related tables are ready")
+	log.Println("All authentication-related tables are ready")
 	return nil
 }

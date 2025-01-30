@@ -3,10 +3,12 @@ package postgres
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
 	model "github.com/demkowo/auth/models"
+	dbclient "github.com/demkowo/dbclient/client"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 )
@@ -80,7 +82,7 @@ const (
 			account.blocked, 
 			account.deleted;
 	`
-	GET_ACCOUNT_BY_Id = `
+	GET_ACCOUNT_BY_ID = `
 		SELECT 
 			account.id,
 			account.nickname,
@@ -137,10 +139,10 @@ type Account interface {
 }
 
 type account struct {
-	db *sql.DB
+	db dbclient.DbClient
 }
 
-func NewAccount(db *sql.DB) Account {
+func NewAccount(db dbclient.DbClient) Account {
 	return &account{
 		db: db,
 	}
@@ -217,7 +219,7 @@ func (r *account) Find() ([]*model.Account, error) {
 			&acc.Deleted,
 		); scanErr != nil {
 			log.Printf("failed to scan rows FIND_ACCOUNTS: %v", scanErr)
-			return nil, errors.New("failed to find accounts")
+			return nil, errors.New("failed to find accounts, scan error")
 		}
 
 		if blocked.Valid {
@@ -239,7 +241,7 @@ func (r *account) Find() ([]*model.Account, error) {
 
 	if rowsErr := rows.Err(); rowsErr != nil {
 		log.Printf("error iterating over accounts: %v", rowsErr)
-		return nil, errors.New("failed to find accounts")
+		return nil, errors.New("failed to find accounts, error in rows")
 	}
 
 	return accounts, nil
@@ -265,7 +267,7 @@ func (r *account) GetByEmail(email string) (*model.Account, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Printf("account with email %s not found", email)
-			return nil, errors.New("account not found")
+			return nil, fmt.Errorf("account with email %s not found", email)
 		}
 		log.Printf("failed to scan rows GET_ACCOUNT_BY_EMAIL: %v", err)
 		return nil, errors.New("failed to get account")
@@ -289,7 +291,7 @@ func (r *account) GetByEmail(email string) (*model.Account, error) {
 }
 
 func (r *account) GetById(id uuid.UUID) (*model.Account, error) {
-	row := r.db.QueryRow(GET_ACCOUNT_BY_Id, id)
+	row := r.db.QueryRow(GET_ACCOUNT_BY_ID, id)
 	var acc model.Account
 	var blocked sql.NullTime
 	var roleNames pq.StringArray
@@ -312,7 +314,7 @@ func (r *account) GetById(id uuid.UUID) (*model.Account, error) {
 			log.Printf("account with id %s not found", id)
 			return nil, errors.New("account not found")
 		}
-		log.Printf("failed to scan rows GET_ACCOUNT_BY_Id: %v", err)
+		log.Printf("failed to scan rows GET_ACCOUNT_BY_ID: %v", err)
 		return nil, errors.New("failed to get account")
 	}
 
@@ -333,8 +335,8 @@ func (r *account) GetById(id uuid.UUID) (*model.Account, error) {
 	acc.APIKeys = make([]model.APIKey, len(apiKeys))
 	for i, keyVal := range apiKeys {
 		acc.APIKeys[i] = model.APIKey{
-			Id:  acc.Id,
-			Key: keyVal,
+			AccountId: acc.Id,
+			Key:       keyVal,
 		}
 	}
 
