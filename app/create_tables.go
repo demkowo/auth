@@ -2,7 +2,6 @@ package app
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 
 	dbclient "github.com/demkowo/dbclient/client"
@@ -57,7 +56,7 @@ func CreateTables(db dbclient.DbClient) error {
 	if !tableName.Valid {
 		log.Println("table account does not exist, creating it")
 		if _, err := db.Exec(CREATE_ACCOUNT_TABLE); err != nil {
-			fmt.Printf("failed to create account table: %v\n", err)
+			log.Printf("failed to create account table: %v\n", err)
 			return err
 		}
 	} else {

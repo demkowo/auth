@@ -1,7 +1,6 @@
 package service
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -11,12 +10,15 @@ import (
 
 	"github.com/demkowo/auth/config"
 	model "github.com/demkowo/auth/models"
+	"github.com/demkowo/auth/utils"
 	"github.com/golang-jwt/jwt"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
-var conf = config.Values.Get()
+var (
+	conf = config.Values.Get()
+)
 
 type AccountRepo interface {
 	Add(*model.Account) error
@@ -69,11 +71,11 @@ func NewAccount(repo AccountRepo) Account {
 }
 
 func (s *account) Add(acc *model.Account) error {
-	if _, err := s.repo.GetByEmail(acc.Email); err == nil {
-		return errors.New("an account with this email already exists")
+	if _, err := s.repo.GetByEmail(acc.Email); err != nil {
+		return err
 	}
 
-	hashedPassword, err := hashPassword(acc.Password)
+	hashedPassword, err := utils.H.HashPassword(acc.Password)
 	if err != nil {
 		return errors.New("failed to create an account")
 	}
@@ -85,7 +87,6 @@ func (s *account) Add(acc *model.Account) error {
 	acc.Updated = now
 	acc.Blocked = time.Time{}
 	acc.Deleted = false
-
 	if err := s.repo.Add(acc); err != nil {
 		return err
 	}
@@ -175,7 +176,7 @@ func (s *account) Login(email, password string) (string, error) {
 		return "", errors.New("invalid credentials")
 	}
 
-	tokenString, err := s.addJWTToken(acc)
+	tokenString, err := utils.H.AddJWTToken(acc)
 	if err != nil {
 		log.Println("failed to create token:", err)
 		return "", errors.New("failed to create token")
@@ -192,12 +193,7 @@ func (s *account) RefreshToken(refreshToken string) (string, error) {
 		return "", errors.New("failed to refresh token")
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		log.Println("invalid token claims type")
-		return "", errors.New("failed to refresh token")
-	}
-
+	claims := token.Claims.(jwt.MapClaims)
 	accountIdStr, ok := claims["id"].(string)
 	if !ok {
 		log.Println("invalid token 'id' field")
@@ -210,18 +206,18 @@ func (s *account) RefreshToken(refreshToken string) (string, error) {
 		return "", errors.New("invalid account Id")
 	}
 
-	if err := s.CheckAccess(accountId); err != nil {
-		log.Println("access check failed:", err)
-		return "", errors.New("unauthorized to refresh token")
-	}
-
 	acc, err := s.repo.GetById(accountId)
 	if err != nil {
 		log.Println("failed to get account:", err)
 		return "", errors.New("account not found")
 	}
 
-	newTokenString, err := s.addJWTToken(acc)
+	if err := s.CheckAccess(accountId); err != nil {
+		log.Println("access check failed:", err)
+		return "", errors.New("unauthorized to refresh token")
+	}
+
+	newTokenString, err := utils.H.AddJWTToken(acc)
 	if err != nil {
 		log.Println("failed to create new token:", err)
 		return "", errors.New("failed to create token")
@@ -254,7 +250,7 @@ func (s *account) UpdatePassword(accountId uuid.UUID, oldPassword, newPassword s
 		return errors.New("invalid old password")
 	}
 
-	hashedPassword, err := hashPassword(newPassword)
+	hashedPassword, err := utils.H.HashPassword(newPassword)
 	if err != nil {
 		return errors.New("failed to change password")
 	}
@@ -266,10 +262,9 @@ func (s *account) UpdatePassword(accountId uuid.UUID, oldPassword, newPassword s
 }
 
 func (s *account) AddAPIKey(accountId uuid.UUID, expiresAt time.Time) (string, error) {
-	bytes := make([]byte, 32)
-	if _, err := rand.Read(bytes); err != nil {
-		log.Println("failed to generate random bytes:", err)
-		return "", errors.New("failed to create API Key")
+	bytes, err := utils.H.GetRandomBytes(32)
+	if err != nil {
+		return "", err
 	}
 
 	key := hex.EncodeToString(bytes)
@@ -320,7 +315,6 @@ func (s *account) AddAccountRole(accountId uuid.UUID, role string) error {
 	if err := s.repo.AddAccountRole(accountId, role); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -328,7 +322,6 @@ func (s *account) DeleteAccountRole(accountId uuid.UUID, role string) error {
 	if err := s.repo.DeleteAccountRole(accountId, role); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -371,39 +364,4 @@ func (s *account) UpdateRoles(roles map[string]interface{}) error {
 		}
 	}
 	return nil
-}
-
-func (s *account) addJWTToken(acc *model.Account) (string, error) {
-	expirationTime := time.Now().Add(24 * time.Hour)
-	claims := jwt.MapClaims{
-		"id":       acc.Id.String(),
-		"nickname": acc.Nickname,
-		"exp":      expirationTime.Unix(),
-		"roles":    extractRoleNames(acc.Roles),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	tokenString, err := token.SignedString(conf.JWTSecret)
-	if err != nil {
-		log.Println("failed to sign JWT token:", err)
-		return "", errors.New("failed to create token")
-	}
-	return tokenString, nil
-}
-
-func extractRoleNames(roles []model.AccountRoles) []string {
-	roleNames := make([]string, len(roles))
-	for i, role := range roles {
-		roleNames[i] = role.Name
-	}
-	return roleNames
-}
-
-func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		log.Println("failed to hash password:", err)
-		return "", errors.New("failed to hash password")
-	}
-	return string(bytes), nil
 }
