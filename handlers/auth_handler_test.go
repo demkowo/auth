@@ -3,7 +3,6 @@ package handler
 import (
 	"bytes"
 	"errors"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -58,7 +57,6 @@ var (
 
 func TestMain(m *testing.M) {
 	utils.StartMock()
-	log.SetOutput(os.Stdout)
 	os.Exit(m.Run())
 }
 
