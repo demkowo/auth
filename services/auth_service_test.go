@@ -54,7 +54,6 @@ func clearMock() {
 func Test_Add_Success(t *testing.T) {
 	clearMock()
 
-	//utils.Var.SetExpectedPassword("$2a$10$bgLJ9Ino.749WOh91Vb2UOlblVL46e8CQTv2lF9I/WQDunZdFc8wq")
 	utils.Var.SetExpectedPassword("secretHashedPass")
 	expAcc.Id = uuid.Nil
 	expAcc.Password = "secretHashedPass"

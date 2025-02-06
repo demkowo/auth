@@ -51,7 +51,8 @@ func (h *account) Add(c *gin.Context) {
 	}
 
 	if err := acc.Validate(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "email, password and nickname can't be empty"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	if err := h.service.Add(&acc); err != nil {
@@ -216,7 +217,7 @@ func (h *account) Unblock(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Account unblocked successfully", "id": id, "unblock_time": time.Now()})
+	c.JSON(http.StatusOK, gin.H{"message": "Account unblocked successfully", "id": id})
 }
 
 func (h *account) UpdatePassword(c *gin.Context) {
@@ -246,7 +247,7 @@ func (h *account) UpdatePassword(c *gin.Context) {
 
 func (h *account) AddAPIKey(c *gin.Context) {
 	var accountId uuid.UUID
-	if parseUUID(c, "account_id", c.Param("account_id"), &accountId) {
+	if !parseUUID(c, "account_id", c.Param("account_id"), &accountId) {
 		return
 	}
 
@@ -291,9 +292,7 @@ func (h *account) AuthenticateByAPIKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"account_id": account.Id,
-		"email":      account.Email,
-		"roles":      account.Roles,
+		"account": account,
 	})
 }
 
@@ -374,7 +373,7 @@ func (h *account) FindRolesByAccount(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, roles)
+	c.JSON(http.StatusOK, gin.H{"roles": roles})
 }
 
 func (h *account) UpdateRoles(c *gin.Context) {
@@ -417,7 +416,7 @@ func parseTime(c *gin.Context, timeFormat string, txtToParse string, dest *time.
 	res, err := time.Parse(timeFormat, txtToParse)
 	if err != nil {
 		log.Printf("invalid input: %v", txtToParse)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid time format, expected: 2006-01-02"})
 		return false
 	}
 
