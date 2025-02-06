@@ -35,7 +35,10 @@ func Start() {
 	accountHandler := handler.NewAccount(accountService)
 	addAccountRoutes(accountHandler)
 
-	CreateTables(db)
+	err = CreateTables(db)
+	if err != nil {
+		log.Panic(err)
+	}
 
 	router.Run(portNumber)
 }
