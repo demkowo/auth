@@ -7,13 +7,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	handler "github.com/demkowo/auth/handlers"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
 
 var (
-	mockHandler = handler.NewAccountMock()
+	mockHandler = NewHandlerMock()
 )
 
 func TestRoutes(t *testing.T) {

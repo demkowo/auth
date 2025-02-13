@@ -10,7 +10,6 @@ import (
 	"time"
 
 	model "github.com/demkowo/auth/models"
-	service "github.com/demkowo/auth/services"
 	"github.com/demkowo/utils/helper"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -23,7 +22,7 @@ var (
 	tn, _  = time.Parse("2006-01-02T15:04:05", "2025-02-06T11:35:20")
 	errMap map[string]error
 
-	mockService = service.NewAccountMock()
+	mockService = NewServiceMock()
 	handler     = NewAccount(mockService)
 
 	acc            model.Account
@@ -135,7 +134,7 @@ func Test_Add_AddError(t *testing.T) {
 	c.Request = setReq("POST", "/accounts", `{"email":"test@test.com","password":"Qwerty!23","nickname":"tester"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_Add_AddError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.Add(c)
 
@@ -204,7 +203,7 @@ func Test_Block_BlockError(t *testing.T) {
 	c.Request = setReq("POST", "/block", `{"account_id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3","until":"2025-02-02"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_Block_BlockError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.Block(c)
 
@@ -247,7 +246,7 @@ func Test_Delete_DeleteError(t *testing.T) {
 	c.Request = httptest.NewRequest("DELETE", "/accounts/"+acc.Id.String(), nil)
 
 	helper.AddMock(helper.Mock{Test: "Test_Delete_DeleteError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.Delete(c)
 
@@ -272,7 +271,7 @@ func Test_Find_FindError(t *testing.T) {
 	errMap["Find"] = errors.New("Find error")
 	c.Request = httptest.NewRequest("GET", "/api/v1/auth/find", nil)
 
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.Find(c)
 
@@ -286,7 +285,7 @@ func Test_GetByEmail_Success(t *testing.T) {
 	c.Params = []gin.Param{{Key: "email", Value: "admin@admin.com"}}
 	c.Request = httptest.NewRequest("GET", "/accounts/admin@admin.com", nil)
 
-	mockService.SetMock(service.Mock{Account: &acc})
+	mockService.AddMock(Mock{Account: &acc})
 
 	handler.GetByEmail(c)
 
@@ -317,7 +316,7 @@ func Test_GetByEmail_GetByEmailError(t *testing.T) {
 	c.Params = []gin.Param{{Key: "email", Value: "admin@admin.com"}}
 	c.Request = httptest.NewRequest("GET", "/accounts/admin@admin.com", nil)
 
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.GetByEmail(c)
 
@@ -332,7 +331,7 @@ func Test_GetById_Success(t *testing.T) {
 	c.Request = httptest.NewRequest("GET", "/accounts/"+acc.Id.String(), nil)
 
 	helper.AddMock(helper.Mock{Test: "Test_GetById_Success"})
-	mockService.SetMock(service.Mock{Account: &acc})
+	mockService.AddMock(Mock{Account: &acc})
 
 	handler.GetById(c)
 
@@ -380,7 +379,7 @@ func Test_GetById_ServiceError(t *testing.T) {
 	errMap["GetById"] = errors.New("GetById error")
 
 	helper.AddMock(helper.Mock{Test: "Test_GetById_ServiceError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.GetById(c)
 
@@ -394,7 +393,7 @@ func Test_Login_Success(t *testing.T) {
 	c.Request = setReq("POST", "/login", `{"email":"admin@admin.com","password":"secret"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_Login_Success"})
-	mockService.SetMock(service.Mock{Token: "someValidToken"})
+	mockService.AddMock(Mock{Token: "someValidToken"})
 
 	handler.Login(c)
 
@@ -423,7 +422,7 @@ func Test_Login_LoginError(t *testing.T) {
 	c.Request = setReq("POST", "/login", `{"email":"admin@admin.com","password":"wrong"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_Login_LoginError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.Login(c)
 
@@ -436,7 +435,7 @@ func Test_RefreshToken_Success(t *testing.T) {
 
 	c.Request = setReq("POST", "/refresh", "", "Bearer sometoken")
 
-	mockService.SetMock(service.Mock{Token: "someValidToken"})
+	mockService.AddMock(Mock{Token: "someValidToken"})
 
 	handler.RefreshToken(c)
 
@@ -451,7 +450,7 @@ func Test_RefreshToken_GetHeaderError(t *testing.T) {
 	req := httptest.NewRequest("POST", "/refresh", nil)
 	c.Request = req
 
-	mockService.SetMock(service.Mock{})
+	mockService.AddMock(Mock{})
 
 	handler.RefreshToken(c)
 
@@ -464,7 +463,7 @@ func Test_RefreshToken_HeaderFormatError(t *testing.T) {
 
 	c.Request = setReq("POST", "/refresh", "", "invalidToken")
 
-	mockService.SetMock(service.Mock{})
+	mockService.AddMock(Mock{})
 
 	handler.RefreshToken(c)
 
@@ -478,7 +477,7 @@ func Test_RefreshToken_RefreshTokenError(t *testing.T) {
 	errMap["RefreshToken"] = errors.New("RefreshToken error")
 	c.Request = setReq("POST", "/refresh", "", "Bearer invalidToken")
 
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.RefreshToken(c)
 
@@ -521,7 +520,7 @@ func Test_Unblock_ParseUUIDError(t *testing.T) {
 
 	helper.AddMock(helper.Mock{Test: "Test_Unblock_ParseUUIDError", Error: errMap})
 
-	mockService.SetMock(service.Mock{})
+	mockService.AddMock(Mock{})
 
 	handler.Unblock(c)
 
@@ -536,7 +535,7 @@ func Test_Unblock_UnblockError(t *testing.T) {
 	c.Request = setReq("POST", "/unblock", `{"account_id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_Unblock_UnblockError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.Unblock(c)
 
@@ -550,7 +549,7 @@ func Test_UpdatePassword_Success(t *testing.T) {
 	c.Request = setReq("POST", "/update-password", `{"id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3","old_pass":"old123","new_pass":"new123"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_UpdatePassword_Success"})
-	mockService.SetMock(service.Mock{})
+	mockService.AddMock(Mock{})
 
 	handler.UpdatePassword(c)
 
@@ -594,7 +593,7 @@ func Test_UpdatePassword_UpdatePasswordError(t *testing.T) {
 	c.Request = setReq("POST", "/update-password", `{"id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3","old_pass":"old","new_pass":"new"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_UpdatePassword_UpdatePasswordError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.UpdatePassword(c)
 
@@ -609,7 +608,7 @@ func Test_AddAPIKey_Success(t *testing.T) {
 	c.Request = setReq("POST", "/api/v1/auth/api-key/"+acc.Id.String(), `{"expires_at":"2026-02-06T00:00:00Z"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAPIKey_Success"})
-	mockService.SetMock(service.Mock{ApiKey: &model.APIKey{Key: "validAPIKey"}})
+	mockService.AddMock(Mock{ApiKey: &model.APIKey{Key: "validAPIKey"}})
 
 	handler.AddAPIKey(c)
 
@@ -636,7 +635,7 @@ func Test_AddAPIKey_ParseUUIDError(t *testing.T) {
 	errMap["ParseUUID"] = errors.New("ParseUUID error")
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAPIKey_ParseUUIDError", Error: errMap})
-	mockService.SetMock(service.Mock{ApiKey: &model.APIKey{Key: "validAPIKey"}})
+	mockService.AddMock(Mock{ApiKey: &model.APIKey{Key: "validAPIKey"}})
 
 	handler.AddAPIKey(c)
 
@@ -652,7 +651,7 @@ func Test_AddAPIKey_BindJSONError(t *testing.T) {
 	errMap["BindJSON"] = errors.New("BindJSON error")
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAPIKey_BindJSONError", Error: errMap})
-	mockService.SetMock(service.Mock{ApiKey: &model.APIKey{Key: "validAPIKey"}})
+	mockService.AddMock(Mock{ApiKey: &model.APIKey{Key: "validAPIKey"}})
 
 	handler.AddAPIKey(c)
 
@@ -668,7 +667,7 @@ func Test_AddAPIKey_AddAPIKeyError(t *testing.T) {
 	c.Request = setReq("POST", "/api/v1/auth/api-key/"+acc.Id.String(), `{"expires_at":"2026-02-06T00:00:00Z"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAPIKey_AddAPIKeyError"})
-	mockService.SetMock(service.Mock{Error: errMap, ApiKey: &model.APIKey{Key: "validAPIKey"}})
+	mockService.AddMock(Mock{Error: errMap, ApiKey: &model.APIKey{Key: "validAPIKey"}})
 
 	handler.AddAPIKey(c)
 
@@ -681,7 +680,7 @@ func Test_AuthenticateByAPIKey_Success(t *testing.T) {
 
 	c.Request = setReq("GET", "/api-key-auth", "", "Bearer someValidKey")
 
-	mockService.SetMock(service.Mock{Account: &acc})
+	mockService.AddMock(Mock{Account: &acc})
 
 	handler.AuthenticateByAPIKey(c)
 
@@ -722,7 +721,7 @@ func Test_AuthenticateByAPIKey_AuthenticateByAPIKeyError(t *testing.T) {
 	errMap["AuthenticateByAPIKey"] = errors.New("AuthenticateByAPIKey error")
 	c.Request = setReq("GET", "/api-key-auth", "", "Bearer invalid")
 
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.AuthenticateByAPIKey(c)
 
@@ -764,7 +763,7 @@ func Test_DeleteAPIKey_DeleteAPIKeyError(t *testing.T) {
 	c.Request = setReq("POST", "/api-keys/delete", `{"api_key":"someAPIKey"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_DeleteAPIKey_DeleteAPIKeyError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.DeleteAPIKey(c)
 
@@ -824,7 +823,7 @@ func Test_AddAccountRole_AddAccountRoleError(t *testing.T) {
 	c.Request = setReq("POST", "/accounts/"+acc.Id.String()+"/roles", `{"role":"tester"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAccountRole_AddAccountRoleError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.AddAccountRole(c)
 
@@ -884,7 +883,7 @@ func Test_DeleteAccountRole_DeleteAccountRoleError(t *testing.T) {
 	c.Request = setReq("DELETE", "/accounts/"+acc.Id.String()+"/roles", `{"role":"tester"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_DeleteAccountRole_DeleteAccountRoleError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.DeleteAccountRole(c)
 
@@ -900,7 +899,7 @@ func Test_FindRolesByAccount_Success(t *testing.T) {
 	acc.Roles = []model.AccountRole{{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"}}
 
 	helper.AddMock(helper.Mock{Test: "Test_FindRolesByAccount_Success"})
-	mockService.SetMock(service.Mock{AccountRoles: acc.Roles})
+	mockService.AddMock(Mock{AccountRoles: acc.Roles})
 
 	handler.FindRolesByAccount(c)
 
@@ -936,7 +935,7 @@ func Test_FindRolesByAccount_FindRolesByAccountError(t *testing.T) {
 	c.Request = httptest.NewRequest("GET", "/accounts/"+acc.Id.String()+"/roles", nil)
 
 	helper.AddMock(helper.Mock{Test: "Test_FindRolesByAccount_FindRolesByAccountError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.FindRolesByAccount(c)
 
@@ -950,7 +949,7 @@ func Test_UpdateRoles_Success(t *testing.T) {
 	c.Request = setReq("POST", "/roles/update", `{"role_update":"someData"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_UpdateRoles_Success"})
-	mockService.SetMock(service.Mock{})
+	mockService.AddMock(Mock{})
 
 	handler.UpdateRoles(c)
 
@@ -979,7 +978,7 @@ func Test_UpdateRoles_UpdateRolesError(t *testing.T) {
 	c.Request = setReq("POST", "/roles/update", `{"role_update":"someData"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_UpdateRoles_UpdateRolesError"})
-	mockService.SetMock(service.Mock{Error: errMap})
+	mockService.AddMock(Mock{Error: errMap})
 
 	handler.UpdateRoles(c)
 

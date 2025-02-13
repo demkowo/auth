@@ -1,4 +1,4 @@
-package handler
+package app
 
 import (
 	"net/http"
@@ -6,62 +6,66 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type accountMock struct {
+var (
+	hm = &handlerMock{}
+)
+
+type handlerMock struct {
 }
 
-func NewAccountMock() Account {
-	return &accountMock{}
+func NewHandlerMock() *handlerMock {
+	return hm
 }
 
-func (m *accountMock) Add(c *gin.Context) {
+func (m *handlerMock) Add(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "account added"})
 }
 
-func (m *accountMock) Login(c *gin.Context) {
+func (m *handlerMock) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "login successful"})
 }
-func (m *accountMock) RefreshToken(c *gin.Context) {
+func (m *handlerMock) RefreshToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "token refreshed"})
 }
-func (m *accountMock) AuthenticateByAPIKey(c *gin.Context) {
+func (m *handlerMock) AuthenticateByAPIKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "authenticated"})
 }
-func (m *accountMock) Block(c *gin.Context) {
+func (m *handlerMock) Block(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "account blocked"})
 }
-func (m *accountMock) Delete(c *gin.Context) {
+func (m *handlerMock) Delete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "account deleted"})
 }
-func (m *accountMock) Find(c *gin.Context) {
+func (m *handlerMock) Find(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "account found"})
 }
-func (m *accountMock) GetByEmail(c *gin.Context) {
+func (m *handlerMock) GetByEmail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "account retrieved by email"})
 }
-func (m *accountMock) GetById(c *gin.Context) {
+func (m *handlerMock) GetById(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "account retrieved by ID"})
 }
-func (m *accountMock) Unblock(c *gin.Context) {
+func (m *handlerMock) Unblock(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "account unblocked"})
 }
-func (m *accountMock) UpdatePassword(c *gin.Context) {
+func (m *handlerMock) UpdatePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "password updated"})
 }
-func (m *accountMock) AddAPIKey(c *gin.Context) {
+func (m *handlerMock) AddAPIKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "API key added"})
 }
-func (m *accountMock) DeleteAPIKey(c *gin.Context) {
+func (m *handlerMock) DeleteAPIKey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "API key deleted"})
 }
-func (m *accountMock) AddAccountRole(c *gin.Context) {
+func (m *handlerMock) AddAccountRole(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "role added"})
 }
-func (m *accountMock) DeleteAccountRole(c *gin.Context) {
+func (m *handlerMock) DeleteAccountRole(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "role deleted"})
 }
-func (m *accountMock) FindRolesByAccount(c *gin.Context) {
+func (m *handlerMock) FindRolesByAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "roles found"})
 }
-func (m *accountMock) UpdateRoles(c *gin.Context) {
+func (m *handlerMock) UpdateRoles(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "roles updated"})
 }

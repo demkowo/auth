@@ -12,7 +12,6 @@ import (
 
 	"github.com/demkowo/auth/config"
 	model "github.com/demkowo/auth/models"
-	"github.com/demkowo/auth/repositories/postgres"
 	"github.com/demkowo/utils/helper"
 	"github.com/demkowo/utils/resp"
 	"github.com/golang-jwt/jwt"
@@ -24,7 +23,7 @@ import (
 var (
 	errMap map[string]error
 
-	mockRepo = postgres.NewAccountMock()
+	mockRepo = NewRepoMock()
 	service  = NewAccount(mockRepo)
 
 	acc            model.Account
@@ -70,16 +69,13 @@ func clearMock() {
 	apiKey = defaultApiKey
 	accRole = *defaultAccRole
 	errMap = make(map[string]error)
-	mockRepo.SetMock(postgres.Mock{})
+	mockRepo.AddMock(Mock{})
 }
 
 func Test_Add_Success(t *testing.T) {
 	clearMock()
 
-	helper.AddMock(helper.Mock{
-		Test:     "Test_Add_Success",
-		Password: "secretHashedPass",
-	})
+	helper.AddMock(helper.Mock{Test: "Test_Add_Success", Password: "secretHashedPass"})
 
 	account, err := service.Add(&acc)
 
@@ -92,7 +88,7 @@ func Test_Add_GetByEmailError(t *testing.T) {
 
 	errMap["GetByEmail"] = errors.New("GetByEmail error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap, Account: &acc})
+	mockRepo.AddMock(Mock{Error: errMap, Account: &acc})
 
 	account, err := service.Add(&acc)
 
@@ -119,11 +115,7 @@ func Test_Add_AddError(t *testing.T) {
 	errMap["Add"] = errors.New("Add error")
 
 	helper.AddMock(helper.Mock{Test: "Test_Add_AddError"})
-
-	mockRepo.SetMock(postgres.Mock{
-		Error:   errMap,
-		Account: &acc,
-	})
+	mockRepo.AddMock(Mock{Error: errMap, Account: &acc})
 
 	account, err := service.Add(&acc)
 
@@ -184,10 +176,7 @@ func Test_AddJWTToken_TokenSignedStringError(t *testing.T) {
 
 	errMap["TokenSignedString"] = errors.New("TokenSignedString error")
 
-	helper.AddMock(helper.Mock{
-		Test:  "Test_AddJWTToken_TokenSignedStringError",
-		Error: errMap,
-	})
+	helper.AddMock(helper.Mock{Test: "Test_AddJWTToken_TokenSignedStringError", Error: errMap})
 
 	token, err := service.AddJWTToken(&acc)
 
@@ -198,7 +187,7 @@ func Test_AddJWTToken_TokenSignedStringError(t *testing.T) {
 func Test_Block_Success(t *testing.T) {
 	clearMock()
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	account, err := service.Block(acc.Id, time.Time{})
 
@@ -211,7 +200,7 @@ func Test_Block_GetByIdError(t *testing.T) {
 
 	errMap["GetById"] = errors.New("GetById error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	account, err := service.Block(uuid.New(), time.Now().Add(24*time.Hour))
 
@@ -224,7 +213,7 @@ func Test_Block_UpdateError(t *testing.T) {
 
 	errMap["Update"] = errors.New("Update error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap, Account: &acc})
+	mockRepo.AddMock(Mock{Error: errMap, Account: &acc})
 
 	account, err := service.Block(uuid.New(), acc.Blocked)
 
@@ -235,9 +224,7 @@ func Test_Block_UpdateError(t *testing.T) {
 func Test_CheckAccess_Success(t *testing.T) {
 	clearMock()
 
-	mockRepo.SetMock(postgres.Mock{
-		Account: &model.Account{Id: uuid.New(), Deleted: false, Blocked: time.Time{}},
-	})
+	mockRepo.AddMock(Mock{Account: &model.Account{Id: uuid.New(), Deleted: false, Blocked: time.Time{}}})
 
 	err := service.CheckAccess(uuid.New())
 
@@ -249,7 +236,7 @@ func Test_CheckAccess_GetByIdError(t *testing.T) {
 
 	errMap["GetById"] = errors.New("GetById error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	err := service.CheckAccess(uuid.New())
 
@@ -261,7 +248,7 @@ func Test_CheckAccess_DeletedError(t *testing.T) {
 
 	acc.Deleted = true
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	err := service.CheckAccess(uuid.New())
 
@@ -273,9 +260,7 @@ func Test_CheckAccess_BlockedError(t *testing.T) {
 
 	acc.Blocked = time.Now().Add(time.Hour)
 
-	mockRepo.SetMock(postgres.Mock{
-		Account: &acc,
-	})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	err := service.CheckAccess(uuid.New())
 
@@ -296,7 +281,7 @@ func Test_Delete_Error(t *testing.T) {
 
 	errMap["Delete"] = errors.New("Delete error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	err := service.Delete(uuid.New())
 
@@ -311,7 +296,7 @@ func Test_Find_Success(t *testing.T) {
 		{Id: uuid.New(), Email: "test2@example.com", Password: "Paassy!23"},
 	}
 
-	mockRepo.SetMock(postgres.Mock{Accounts: acc})
+	mockRepo.AddMock(Mock{Accounts: acc})
 
 	accounts, err := service.Find()
 
@@ -325,7 +310,7 @@ func Test_Find_Error(t *testing.T) {
 
 	errMap["Find"] = errors.New("Find error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	accounts, err := service.Find()
 
@@ -336,7 +321,7 @@ func Test_Find_Error(t *testing.T) {
 func Test_GetByEmail_Success(t *testing.T) {
 	clearMock()
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	account, err := service.GetByEmail("test@example.com")
 
@@ -349,7 +334,7 @@ func Test_GetByEmail_Error(t *testing.T) {
 
 	errMap["GetByEmail"] = errors.New("GetByEmail error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	account, err := service.GetByEmail("test@example.com")
 
@@ -360,7 +345,7 @@ func Test_GetByEmail_Error(t *testing.T) {
 func Test_GetById_Success(t *testing.T) {
 	clearMock()
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	account, err := service.GetById(acc.Id)
 
@@ -373,7 +358,7 @@ func Test_GetById_Error(t *testing.T) {
 
 	errMap["GetById"] = errors.New("GetById err")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	account, err := service.GetById(acc.Id)
 
@@ -388,12 +373,11 @@ func Test_Login_Success(t *testing.T) {
 	acc.Password = string(hashed)
 
 	helper.AddMock(helper.Mock{Test: "Login"})
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	token, err := service.Login("email@example.com", "validPassword")
 
 	parts := strings.Split(token, ".")
-
 	assert.Nil(t, err) // token is being tested with more details in AddJWTToken
 	if assert.True(t, len(parts) == 3) {
 		assert.Equal(t, 36, len(parts[0]))
@@ -407,7 +391,7 @@ func Test_Login_GetByEmailError(t *testing.T) {
 
 	errMap["GetByEmail"] = errors.New("GetByEmail error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	token, err := service.Login("email@example.com", "invalidPassword")
 
@@ -422,9 +406,7 @@ func Test_Login_CheckAccessError(t *testing.T) {
 	acc.Password = string(hashed)
 	acc.Deleted = true // triggers error in CheckAccess
 
-	mockRepo.SetMock(postgres.Mock{
-		Account: &acc,
-	})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	token, err := service.Login("email@example.com", "invalidPassword")
 
@@ -438,14 +420,13 @@ func Test_Login_CompareHashAndPasswordError(t *testing.T) {
 	hashed, _ := bcrypt.GenerateFromPassword([]byte("invalidPassword"), bcrypt.DefaultCost)
 	acc.Password = string(hashed)
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	token, err := service.Login("email@example.com", "validPassword")
 
 	assert.Equal(t, "", token)
 	assert.Equal(t, resp.Error(http.StatusUnauthorized,
-		"invalid credentials", []interface{}{"crypto/bcrypt: hashedPassword is not the hash of the given password"}),
-		err)
+		"invalid credentials", []interface{}{"crypto/bcrypt: hashedPassword is not the hash of the given password"}), err)
 }
 
 func Test_Login_AddJwtTokenError(t *testing.T) {
@@ -457,7 +438,7 @@ func Test_Login_AddJwtTokenError(t *testing.T) {
 	errMap["TokenSignedString"] = errors.New("TokenSignedString error")
 
 	helper.AddMock(helper.Mock{Test: "Login", Error: errMap})
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	token, err := service.Login("email@example.com", "validPassword")
 
@@ -475,7 +456,7 @@ func Test_RefreshToken_Success(t *testing.T) {
 	tokenStr, _ := token.SignedString(config.Values.Get().JWTSecret)
 
 	helper.AddMock(helper.Mock{Test: "RefreshToken"})
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	newToken, err := service.RefreshToken(tokenStr)
 
@@ -492,7 +473,7 @@ func Test_RefreshToken_Success(t *testing.T) {
 func Test_RefreshToken_InvalidTokenError(t *testing.T) {
 	clearMock()
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	newToken, err := service.RefreshToken("invalid.token.string")
 
@@ -541,7 +522,7 @@ func Test_RefreshToken_GetByIdError(t *testing.T) {
 	tokenStr, _ := token.SignedString(config.Values.Get().JWTSecret)
 	errMap["GetById"] = errors.New("GetById error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	newToken, err := service.RefreshToken(tokenStr)
 
@@ -559,7 +540,7 @@ func Test_RefreshToken_CheckAccessError(t *testing.T) {
 	tokenStr, _ := token.SignedString(config.Values.Get().JWTSecret)
 	acc.Deleted = true // triggers error in CheckAccess
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	newToken, err := service.RefreshToken(tokenStr)
 
@@ -578,7 +559,7 @@ func Test_RefreshToken_AddJwtTokenError(t *testing.T) {
 	errMap["TokenSignedString"] = errors.New("TokenSignedString error")
 
 	helper.AddMock(helper.Mock{Test: "RefreshToken", Error: errMap})
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	newToken, err := service.RefreshToken(tokenStr)
 
@@ -589,7 +570,7 @@ func Test_RefreshToken_AddJwtTokenError(t *testing.T) {
 func Test_Unblock_Success(t *testing.T) {
 	clearMock()
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	account, err := service.Unblock(uuid.New())
 
@@ -602,7 +583,7 @@ func Test_Unblock_GetByIdError(t *testing.T) {
 
 	errMap["GetById"] = errors.New("GetById error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	account, err := service.Unblock(uuid.New())
 
@@ -615,7 +596,7 @@ func Test_Unblock_UpdateError(t *testing.T) {
 
 	errMap["Update"] = errors.New("Update error")
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc, Error: errMap})
+	mockRepo.AddMock(Mock{Account: &acc, Error: errMap})
 
 	account, err := service.Unblock(uuid.New())
 
@@ -632,7 +613,7 @@ func Test_UpdatePassword_Success(t *testing.T) {
 	newPass := "newPass!@#"
 
 	helper.AddMock(helper.Mock{Test: "Test_UpdatePassword_Success", Password: newPass})
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	err := service.UpdatePassword(uuid.New(), oldPass, newPass)
 
@@ -644,7 +625,7 @@ func Test_UpdatePassword_GetByIdError(t *testing.T) {
 
 	errMap["GetById"] = errors.New("GetById error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	err := service.UpdatePassword(uuid.New(), "oldpass", "newpass")
 
@@ -654,7 +635,7 @@ func Test_UpdatePassword_GetByIdError(t *testing.T) {
 func Test_UpdatePassword_InvalidOldPasswordError(t *testing.T) {
 	clearMock()
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	err := service.UpdatePassword(uuid.New(), "invalidOldPass", "newPass")
 
@@ -671,7 +652,7 @@ func Test_UpdatePassword_HashPasswordError(t *testing.T) {
 	errMap["HashPassword"] = errors.New("HashPassword error")
 
 	helper.AddMock(helper.Mock{Test: "Test_UpdatePassword_HashPasswordError", Error: errMap})
-	mockRepo.SetMock(postgres.Mock{Account: &acc})
+	mockRepo.AddMock(Mock{Account: &acc})
 
 	err := service.UpdatePassword(uuid.New(), oldPass, "newPass!@#")
 
@@ -687,7 +668,7 @@ func Test_UpdatePassword_UpdatePasswordError(t *testing.T) {
 	acc.Password = string(oldHashed)
 	errMap["UpdatePassword"] = errors.New("UpdatePassword error")
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc, Error: errMap})
+	mockRepo.AddMock(Mock{Account: &acc, Error: errMap})
 	helper.AddMock(helper.Mock{Test: "Test_UpdatePassword_UpdatePasswordError"})
 
 	err := service.UpdatePassword(uuid.New(), oldPass, "newPass!@#")
@@ -725,7 +706,7 @@ func Test_AddAPIKey_AddAPIKeyError(t *testing.T) {
 	errMap["AddAPIKey"] = errors.New("AddAPIKey error")
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAPIKey_AddAPIKeyError"})
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	key, err := service.AddAPIKey(uuid.New(), time.Now().Add(time.Hour))
 
@@ -736,7 +717,7 @@ func Test_AddAPIKey_AddAPIKeyError(t *testing.T) {
 func Test_AuthenticateByAPIKey_Success(t *testing.T) {
 	clearMock()
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc, ApiKey: &apiKey})
+	mockRepo.AddMock(Mock{Account: &acc, ApiKey: &apiKey})
 
 	account, err := service.AuthenticateByAPIKey("asd")
 
@@ -749,7 +730,7 @@ func Test_AuthenticateByAPIKey_GetAPIKeyByKeyError(t *testing.T) {
 
 	errMap["GetAPIKeyByKey"] = errors.New("GetAPIKeyByKey error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap, ApiKey: &apiKey})
+	mockRepo.AddMock(Mock{Error: errMap, ApiKey: &apiKey})
 
 	account, err := service.AuthenticateByAPIKey("asd")
 
@@ -762,7 +743,7 @@ func Test_AuthenticateByAPIKey_ExpiredKeyError(t *testing.T) {
 
 	apiKey.ExpiresAt = time.Now().Add(time.Hour * -1)
 
-	mockRepo.SetMock(postgres.Mock{Account: &acc, ApiKey: &apiKey})
+	mockRepo.AddMock(Mock{Account: &acc, ApiKey: &apiKey})
 
 	account, err := service.AuthenticateByAPIKey("asd")
 
@@ -775,7 +756,7 @@ func Test_AuthenticateByAPIKey_GetByIdError(t *testing.T) {
 
 	errMap["GetById"] = errors.New("GetById error")
 
-	mockRepo.SetMock(postgres.Mock{ApiKey: &apiKey, Account: &acc, Error: errMap})
+	mockRepo.AddMock(Mock{ApiKey: &apiKey, Account: &acc, Error: errMap})
 
 	account, err := service.AuthenticateByAPIKey("asd")
 
@@ -788,7 +769,7 @@ func Test_AuthenticateByAPIKey_CheckAccessError(t *testing.T) {
 
 	acc.Deleted = true
 
-	mockRepo.SetMock(postgres.Mock{ApiKey: &apiKey, Account: &acc})
+	mockRepo.AddMock(Mock{ApiKey: &apiKey, Account: &acc})
 
 	account, err := service.AuthenticateByAPIKey("asd")
 
@@ -809,7 +790,7 @@ func Test_DeleteAPIKey_Error(t *testing.T) {
 
 	errMap["DeleteAPIKey"] = errors.New("DeleteAPIKey error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	err := service.DeleteAPIKey("somekey")
 
@@ -819,7 +800,7 @@ func Test_DeleteAPIKey_Error(t *testing.T) {
 func Test_AddAccountRole_Success(t *testing.T) {
 	clearMock()
 
-	mockRepo.SetMock(postgres.Mock{AccountRoles: []model.AccountRole{accRole}})
+	mockRepo.AddMock(Mock{AccountRoles: []model.AccountRole{accRole}})
 
 	roles, err := service.AddAccountRole(acc.Id, "admin")
 
@@ -832,7 +813,7 @@ func Test_AddAccountRole_Error(t *testing.T) {
 
 	errMap["AddAccountRole"] = errors.New("AddAccountRole error")
 
-	mockRepo.SetMock(postgres.Mock{AccountRoles: []model.AccountRole{accRole}, Error: errMap})
+	mockRepo.AddMock(Mock{AccountRoles: []model.AccountRole{accRole}, Error: errMap})
 
 	roles, err := service.AddAccountRole(uuid.New(), "admin")
 
@@ -853,7 +834,7 @@ func Test_DeleteAccountRole_Error(t *testing.T) {
 
 	errMap["DeleteAccountRole"] = errors.New("DeleteAccountRole error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	err := service.DeleteAccountRole(uuid.New(), "admin")
 
@@ -866,9 +847,7 @@ func Test_FindRolesByAccount_Success(t *testing.T) {
 	id1 := uuid.New()
 	id2 := uuid.New()
 
-	mockRepo := postgres.NewAccountMock()
-	mockRepo.SetMock(postgres.Mock{
-		AccountRoles: []model.AccountRole{{Id: id1, Name: "admin"}, {Id: id2, Name: "user"}}})
+	mockRepo.AddMock(Mock{AccountRoles: []model.AccountRole{{Id: id1, Name: "admin"}, {Id: id2, Name: "user"}}})
 
 	roles, err := service.FindRolesByAccount(uuid.New())
 
@@ -881,7 +860,7 @@ func Test_FindRolesByAccount_Error(t *testing.T) {
 
 	errMap["FindRolesByAccount"] = errors.New("FindRolesByAccount error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	roles, err := service.FindRolesByAccount(uuid.New())
 
@@ -926,7 +905,7 @@ func Test_UpdateRoles_AddAccountRoleError(t *testing.T) {
 	rolesMap := map[string]interface{}{"role_" + uuid.NewString() + "_admin": "true"}
 	errMap["AddAccountRole"] = errors.New("AddAccountRole error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	err := service.UpdateRoles(rolesMap)
 
@@ -939,7 +918,7 @@ func Test_UpdateRoles_DeleteAccountRoleError(t *testing.T) {
 
 	errMap["DeleteAccountRole"] = errors.New("DeleteAccountRole error")
 
-	mockRepo.SetMock(postgres.Mock{Error: errMap})
+	mockRepo.AddMock(Mock{Error: errMap})
 
 	rolesMap := map[string]interface{}{"role_" + uuid.NewString() + "_user": "false"}
 

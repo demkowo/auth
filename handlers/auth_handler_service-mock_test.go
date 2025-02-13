@@ -1,4 +1,4 @@
-package service
+package handler
 
 import (
 	"errors"
@@ -12,10 +12,10 @@ import (
 )
 
 var (
-	am = &accountMock{}
+	sm = &serviceMock{}
 )
 
-type accountMock struct {
+type serviceMock struct {
 	mock Mock
 }
 
@@ -29,15 +29,15 @@ type Mock struct {
 	Token        string
 }
 
-func NewAccountMock() *accountMock {
-	return am
+func NewServiceMock() *serviceMock {
+	return sm
 }
 
-func (r *accountMock) SetMock(mock Mock) {
+func (r *serviceMock) AddMock(mock Mock) {
 	r.mock = mock
 }
 
-func (s *accountMock) Add(acc *model.Account) (*model.Account, *resp.Err) {
+func (s *serviceMock) Add(acc *model.Account) (*model.Account, *resp.Err) {
 	if s.mock.Error["Add"] != nil {
 		return nil, resp.Error(http.StatusInternalServerError, "failed to create account", []interface{}{s.mock.Error["Add"].Error()})
 	}
@@ -45,7 +45,7 @@ func (s *accountMock) Add(acc *model.Account) (*model.Account, *resp.Err) {
 	return acc, nil
 }
 
-func (s *accountMock) AddJWTToken(acc *model.Account) (string, *resp.Err) {
+func (s *serviceMock) AddJWTToken(acc *model.Account) (string, *resp.Err) {
 	if s.mock.Error["AddJWTToken"] != nil {
 		return "", resp.Error(http.StatusInternalServerError, "failed to create token", []interface{}{s.mock.Error["AddJWTToken"].Error()})
 	}
@@ -53,7 +53,7 @@ func (s *accountMock) AddJWTToken(acc *model.Account) (string, *resp.Err) {
 	return "validTokenString", nil
 }
 
-func (s *accountMock) Block(accountId uuid.UUID, until time.Time) (*model.Account, *resp.Err) {
+func (s *serviceMock) Block(accountId uuid.UUID, until time.Time) (*model.Account, *resp.Err) {
 	if s.mock.Error["Block"] != nil {
 		log.Println(errors.New("Block error"))
 		return nil, resp.Error(http.StatusInternalServerError, "failed to block account", []interface{}{s.mock.Error["Block"].Error()})
@@ -62,7 +62,7 @@ func (s *accountMock) Block(accountId uuid.UUID, until time.Time) (*model.Accoun
 	return s.mock.Account, nil
 }
 
-func (s *accountMock) CheckAccess(accountId uuid.UUID) *resp.Err {
+func (s *serviceMock) CheckAccess(accountId uuid.UUID) *resp.Err {
 	if s.mock.Error["CheckAccess"] != nil {
 		log.Println(errors.New("CheckAccess error"))
 		return resp.Error(http.StatusInternalServerError, "failed to check access to account", []interface{}{s.mock.Error["CheckAccess"].Error()})
@@ -71,49 +71,49 @@ func (s *accountMock) CheckAccess(accountId uuid.UUID) *resp.Err {
 	return nil
 }
 
-func (s *accountMock) Delete(accountId uuid.UUID) *resp.Err {
+func (s *serviceMock) Delete(accountId uuid.UUID) *resp.Err {
 	if s.mock.Error["Delete"] != nil {
 		return resp.Error(http.StatusInternalServerError, "failed to delete account", []interface{}{s.mock.Error["Delete"].Error()})
 	}
 	return nil
 }
 
-func (s *accountMock) Find() ([]*model.Account, *resp.Err) {
+func (s *serviceMock) Find() ([]*model.Account, *resp.Err) {
 	if s.mock.Error["Find"] != nil {
 		return nil, resp.Error(http.StatusInternalServerError, "failed to find accounts", []interface{}{s.mock.Error["Find"].Error()})
 	}
 	return s.mock.Accounts, nil
 }
 
-func (s *accountMock) GetByEmail(email string) (*model.Account, *resp.Err) {
+func (s *serviceMock) GetByEmail(email string) (*model.Account, *resp.Err) {
 	if s.mock.Error["GetByEmail"] != nil {
 		return nil, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{s.mock.Error["GetByEmail"].Error()})
 	}
 	return s.mock.Account, nil
 }
 
-func (s *accountMock) GetById(id uuid.UUID) (*model.Account, *resp.Err) {
+func (s *serviceMock) GetById(id uuid.UUID) (*model.Account, *resp.Err) {
 	if s.mock.Error["GetById"] != nil {
 		return nil, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{s.mock.Error["GetById"].Error()})
 	}
 	return s.mock.Account, nil
 }
 
-func (s *accountMock) Login(email, password string) (string, *resp.Err) {
+func (s *serviceMock) Login(email, password string) (string, *resp.Err) {
 	if s.mock.Error["Login"] != nil {
 		return "", resp.Error(http.StatusUnauthorized, "login failed", []interface{}{s.mock.Error["Login"].Error()})
 	}
 	return s.mock.Token, nil
 }
 
-func (s *accountMock) RefreshToken(refreshToken string) (string, *resp.Err) {
+func (s *serviceMock) RefreshToken(refreshToken string) (string, *resp.Err) {
 	if s.mock.Error["RefreshToken"] != nil {
 		return "", resp.Error(http.StatusUnauthorized, "refresh token failed", []interface{}{s.mock.Error["RefreshToken"].Error()})
 	}
 	return s.mock.Token, nil
 }
 
-func (s *accountMock) Unblock(accountId uuid.UUID) (*model.Account, *resp.Err) {
+func (s *serviceMock) Unblock(accountId uuid.UUID) (*model.Account, *resp.Err) {
 	if s.mock.Error["Unblock"] != nil {
 		log.Println(errors.New("Unblock error"))
 		return nil, resp.Error(http.StatusInternalServerError, "failed to unblock account", []interface{}{s.mock.Error["Unblock"].Error()})
@@ -122,14 +122,14 @@ func (s *accountMock) Unblock(accountId uuid.UUID) (*model.Account, *resp.Err) {
 	return s.mock.Account, nil
 }
 
-func (s *accountMock) UpdatePassword(accountId uuid.UUID, oldPassword, newPassword string) *resp.Err {
+func (s *serviceMock) UpdatePassword(accountId uuid.UUID, oldPassword, newPassword string) *resp.Err {
 	if s.mock.Error["UpdatePassword"] != nil {
 		return resp.Error(http.StatusInternalServerError, "failed to change password", []interface{}{s.mock.Error["UpdatePassword"].Error()})
 	}
 	return nil
 }
 
-func (s *accountMock) AddAPIKey(accountId uuid.UUID, expiresAt time.Time) (*model.APIKey, *resp.Err) {
+func (s *serviceMock) AddAPIKey(accountId uuid.UUID, expiresAt time.Time) (*model.APIKey, *resp.Err) {
 	if s.mock.Error["AddAPIKey"] != nil {
 		return nil, resp.Error(http.StatusInternalServerError, "failed to create API key", []interface{}{s.mock.Error["AddAPIKey"].Error()})
 	}
@@ -137,21 +137,21 @@ func (s *accountMock) AddAPIKey(accountId uuid.UUID, expiresAt time.Time) (*mode
 	return s.mock.ApiKey, nil
 }
 
-func (s *accountMock) AuthenticateByAPIKey(apiKey string) (*model.Account, *resp.Err) {
+func (s *serviceMock) AuthenticateByAPIKey(apiKey string) (*model.Account, *resp.Err) {
 	if s.mock.Error["AuthenticateByAPIKey"] != nil {
 		return nil, resp.Error(http.StatusUnauthorized, "failed to authenticate with API key", []interface{}{s.mock.Error["AuthenticateByAPIKey"].Error()})
 	}
 	return s.mock.Account, nil
 }
 
-func (s *accountMock) DeleteAPIKey(apiKey string) *resp.Err {
+func (s *serviceMock) DeleteAPIKey(apiKey string) *resp.Err {
 	if s.mock.Error["DeleteAPIKey"] != nil {
 		return resp.Error(http.StatusInternalServerError, "failed to delete API key", []interface{}{s.mock.Error["DeleteAPIKey"].Error()})
 	}
 	return nil
 }
 
-func (s *accountMock) AddAccountRole(accountId uuid.UUID, role string) (*model.AccountRole, *resp.Err) {
+func (s *serviceMock) AddAccountRole(accountId uuid.UUID, role string) (*model.AccountRole, *resp.Err) {
 	if s.mock.Error["AddAccountRole"] != nil {
 		return nil, resp.Error(http.StatusInternalServerError, "failed to add role to account", []interface{}{s.mock.Error["AddAccountRole"].Error()})
 	}
@@ -159,14 +159,14 @@ func (s *accountMock) AddAccountRole(accountId uuid.UUID, role string) (*model.A
 	return s.mock.Roles, nil
 }
 
-func (s *accountMock) DeleteAccountRole(accountId uuid.UUID, role string) *resp.Err {
+func (s *serviceMock) DeleteAccountRole(accountId uuid.UUID, role string) *resp.Err {
 	if s.mock.Error["DeleteAccountRole"] != nil {
 		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{s.mock.Error["DeleteAccountRole"].Error()})
 	}
 	return nil
 }
 
-func (s *accountMock) FindRolesByAccount(accountId uuid.UUID) ([]model.AccountRole, *resp.Err) {
+func (s *serviceMock) FindRolesByAccount(accountId uuid.UUID) ([]model.AccountRole, *resp.Err) {
 	if s.mock.Error["FindRolesByAccount"] != nil {
 		return nil, resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{s.mock.Error["FindRolesByAccount"].Error()})
 	}
@@ -174,7 +174,7 @@ func (s *accountMock) FindRolesByAccount(accountId uuid.UUID) ([]model.AccountRo
 	return s.mock.AccountRoles, nil
 }
 
-func (s *accountMock) UpdateRoles(roles map[string]interface{}) *resp.Err {
+func (s *serviceMock) UpdateRoles(roles map[string]interface{}) *resp.Err {
 	if s.mock.Error["UpdateRoles"] != nil {
 		return resp.Error(http.StatusInternalServerError, "failed to update roles", []interface{}{s.mock.Error["UpdateRoles"].Error()})
 	}
