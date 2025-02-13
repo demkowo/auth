@@ -4,13 +4,11 @@ import (
 	"log"
 	"os"
 
-	"github.com/gin-gonic/gin"
-
 	handler "github.com/demkowo/auth/handlers"
-	postgres "github.com/demkowo/auth/repositories/postgres"
+	"github.com/demkowo/auth/repositories/postgres"
 	service "github.com/demkowo/auth/services"
 	dbclient "github.com/demkowo/dbclient/client"
-
+	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 )
 
@@ -33,9 +31,9 @@ func Start() {
 	accountRepo := postgres.NewAccount(db)
 	accountService := service.NewAccount(accountRepo)
 	accountHandler := handler.NewAccount(accountService)
-	addAccountRoutes(accountHandler)
+	addAccountRoutes(router, accountHandler)
 
-	err = CreateTables(db)
+	err = accountRepo.CreateTables()
 	if err != nil {
 		log.Panic(err)
 	}

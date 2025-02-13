@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"time"
 
 	model "github.com/demkowo/auth/models"
 	dbclient "github.com/demkowo/dbclient/client"
+	"github.com/demkowo/utils/resp"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 )
@@ -120,22 +122,24 @@ const (
 )
 
 type Account interface {
-	Add(*model.Account) error
-	Delete(uuid.UUID) error
-	Find() ([]*model.Account, error)
-	GetByEmail(string) (*model.Account, error)
-	GetById(uuid.UUID) (*model.Account, error)
-	Update(*model.Account) error
-	UpdatePassword(uuid.UUID, string) error
+	CreateTables() error
 
-	AddAPIKey(*model.APIKey) error
-	DeleteAPIKey(string) error
-	GetAPIKeyById(uuid.UUID) (*model.APIKey, error)
-	GetAPIKeyByKey(string) (*model.APIKey, error)
+	Add(*model.Account) (*model.Account, *resp.Err)
+	Delete(uuid.UUID) *resp.Err
+	Find() ([]*model.Account, *resp.Err)
+	GetByEmail(string) (*model.Account, *resp.Err)
+	GetById(uuid.UUID) (*model.Account, *resp.Err)
+	Update(*model.Account) (*model.Account, *resp.Err)
+	UpdatePassword(uuid.UUID, string) *resp.Err
 
-	AddAccountRole(uuid.UUID, string) error
-	DeleteAccountRole(uuid.UUID, string) error
-	FindRolesByAccount(uuid.UUID) ([]model.AccountRoles, error)
+	AddAPIKey(*model.APIKey) (*model.APIKey, *resp.Err)
+	DeleteAPIKey(string) *resp.Err
+	GetAPIKeyById(uuid.UUID) (*model.APIKey, *resp.Err)
+	GetAPIKeyByKey(string) (*model.APIKey, *resp.Err)
+
+	AddAccountRole(uuid.UUID, string) (*model.AccountRole, *resp.Err)
+	DeleteAccountRole(uuid.UUID, string) *resp.Err
+	FindRolesByAccount(uuid.UUID) ([]model.AccountRole, *resp.Err)
 }
 
 type account struct {
@@ -148,7 +152,7 @@ func NewAccount(db dbclient.DbClient) Account {
 	}
 }
 
-func (r *account) Add(acc *model.Account) error {
+func (r *account) Add(acc *model.Account) (*model.Account, *resp.Err) {
 	now := time.Now()
 	acc.Created = now
 	acc.Updated = now
@@ -174,31 +178,32 @@ func (r *account) Add(acc *model.Account) error {
 		if pqErr, ok := err.(*pq.Error); ok {
 			if pqErr.Code == "23505" {
 				log.Printf("duplicate key error on ADD_ACCOUNT: %v", pqErr.Detail)
-				return errors.New("account with the given nickname already exists")
+				return nil, resp.Error(http.StatusInternalServerError, "account with the given nickname already exists", []interface{}{pqErr.Detail})
 			}
 		}
 		log.Printf("failed to execute db.Exec ADD_ACCOUNT: %v", err)
-		return errors.New("failed to create account")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to create account", []interface{}{err.Error()})
 	}
 
-	return nil
+	return acc, nil
 }
 
-func (r *account) Delete(accountId uuid.UUID) error {
+func (r *account) Delete(accountId uuid.UUID) *resp.Err {
 	_, err := r.db.Exec(DELETE_ACCOUNT, time.Now(), accountId)
 	if err != nil {
 		log.Printf("failed to execute db.Exec DELETE_ACCOUNT: %v", err)
-		return errors.New("failed to delete account")
+		return resp.Error(http.StatusInternalServerError, "failed to delete account", []interface{}{err.Error()})
 	}
 	return nil
 }
 
-func (r *account) Find() ([]*model.Account, error) {
+func (r *account) Find() ([]*model.Account, *resp.Err) {
 	rows, err := r.db.Query(FIND_ACCOUNTS)
 	if err != nil {
 		log.Printf("failed to execute db.Query FIND_ACCOUNTS: %v", err)
-		return nil, errors.New("failed to find accounts")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to find accounts", []interface{}{err.Error()})
 	}
+
 	defer rows.Close()
 
 	var accounts []*model.Account
@@ -219,7 +224,7 @@ func (r *account) Find() ([]*model.Account, error) {
 			&acc.Deleted,
 		); scanErr != nil {
 			log.Printf("failed to scan rows FIND_ACCOUNTS: %v", scanErr)
-			return nil, errors.New("failed to find accounts")
+			return nil, resp.Error(http.StatusInternalServerError, "failed to find accounts", []interface{}{scanErr.Error()})
 		}
 
 		if blocked.Valid {
@@ -228,9 +233,9 @@ func (r *account) Find() ([]*model.Account, error) {
 			acc.Blocked = time.Time{}
 		}
 
-		acc.Roles = make([]model.AccountRoles, len(roleNames))
+		acc.Roles = make([]model.AccountRole, len(roleNames))
 		for i, roleName := range roleNames {
-			acc.Roles[i] = model.AccountRoles{
+			acc.Roles[i] = model.AccountRole{
 				Id:   acc.Id,
 				Name: roleName,
 			}
@@ -241,13 +246,13 @@ func (r *account) Find() ([]*model.Account, error) {
 
 	if rowsErr := rows.Err(); rowsErr != nil {
 		log.Printf("error iterating over accounts: %v", rowsErr)
-		return nil, errors.New("failed to find accounts")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to find accounts", []interface{}{rowsErr.Error()})
 	}
 
 	return accounts, nil
 }
 
-func (r *account) GetByEmail(email string) (*model.Account, error) {
+func (r *account) GetByEmail(email string) (*model.Account, *resp.Err) {
 	row := r.db.QueryRow(GET_ACCOUNT_BY_EMAIL, email)
 	var acc model.Account
 	var blocked sql.NullTime
@@ -267,10 +272,10 @@ func (r *account) GetByEmail(email string) (*model.Account, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Printf("account with email %s not found", email)
-			return nil, fmt.Errorf("account with email %s not found", email)
+			return nil, resp.Error(http.StatusInternalServerError, fmt.Sprintf("account with email %s not found", email), []interface{}{sql.ErrNoRows})
 		}
 		log.Printf("failed to scan rows GET_ACCOUNT_BY_EMAIL: %v", err)
-		return nil, errors.New("failed to get account")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{err.Error()})
 	}
 
 	if blocked.Valid {
@@ -279,9 +284,9 @@ func (r *account) GetByEmail(email string) (*model.Account, error) {
 		acc.Blocked = time.Time{}
 	}
 
-	acc.Roles = make([]model.AccountRoles, len(roleNames))
+	acc.Roles = make([]model.AccountRole, len(roleNames))
 	for i, roleName := range roleNames {
-		acc.Roles[i] = model.AccountRoles{
+		acc.Roles[i] = model.AccountRole{
 			Id:   acc.Id,
 			Name: roleName,
 		}
@@ -290,7 +295,7 @@ func (r *account) GetByEmail(email string) (*model.Account, error) {
 	return &acc, nil
 }
 
-func (r *account) GetById(id uuid.UUID) (*model.Account, error) {
+func (r *account) GetById(id uuid.UUID) (*model.Account, *resp.Err) {
 	row := r.db.QueryRow(GET_ACCOUNT_BY_ID, id)
 	var acc model.Account
 	var blocked sql.NullTime
@@ -312,10 +317,10 @@ func (r *account) GetById(id uuid.UUID) (*model.Account, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Printf("account with id %s not found", id)
-			return nil, errors.New("account not found")
+			return nil, resp.Error(http.StatusInternalServerError, "account not found", []interface{}{sql.ErrNoRows})
 		}
 		log.Printf("failed to scan rows GET_ACCOUNT_BY_ID: %v", err)
-		return nil, errors.New("failed to get account")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{err.Error()})
 	}
 
 	if blocked.Valid {
@@ -324,9 +329,9 @@ func (r *account) GetById(id uuid.UUID) (*model.Account, error) {
 		acc.Blocked = time.Time{}
 	}
 
-	acc.Roles = make([]model.AccountRoles, len(roleNames))
+	acc.Roles = make([]model.AccountRole, len(roleNames))
 	for i, roleName := range roleNames {
-		acc.Roles[i] = model.AccountRoles{
+		acc.Roles[i] = model.AccountRole{
 			Id:   acc.Id,
 			Name: roleName,
 		}
@@ -343,7 +348,7 @@ func (r *account) GetById(id uuid.UUID) (*model.Account, error) {
 	return &acc, nil
 }
 
-func (r *account) Update(acc *model.Account) error {
+func (r *account) Update(acc *model.Account) (*model.Account, *resp.Err) {
 	acc.Updated = time.Now()
 
 	var blocked interface{}
@@ -362,13 +367,13 @@ func (r *account) Update(acc *model.Account) error {
 	)
 	if err != nil {
 		log.Printf("failed to execute db.Exec EDIT_ACCOUNT: %v", err)
-		return errors.New("failed to update account")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to update account", []interface{}{err.Error()})
 	}
 
-	return nil
+	return acc, nil
 }
 
-func (r *account) UpdatePassword(accountId uuid.UUID, newPassword string) error {
+func (r *account) UpdatePassword(accountId uuid.UUID, newPassword string) *resp.Err {
 	_, err := r.db.Exec(
 		EDIT_ACCOUNT_PASSWORD,
 		newPassword,
@@ -377,13 +382,13 @@ func (r *account) UpdatePassword(accountId uuid.UUID, newPassword string) error 
 	)
 	if err != nil {
 		log.Printf("failed to execute db.Exec EDIT_ACCOUNT_PASSWORD: %v", err)
-		return errors.New("failed to change password")
+		return resp.Error(http.StatusInternalServerError, "failed to change password", []interface{}{err.Error()})
 	}
 
 	return nil
 }
 
-func (r *account) AddAPIKey(apiKey *model.APIKey) error {
+func (r *account) AddAPIKey(apiKey *model.APIKey) (*model.APIKey, *resp.Err) {
 	var expiresAt interface{}
 	if apiKey.ExpiresAt.IsZero() {
 		expiresAt = nil
@@ -401,23 +406,23 @@ func (r *account) AddAPIKey(apiKey *model.APIKey) error {
 	)
 	if err != nil {
 		log.Printf("failed to execute db.Exec ADD_APIKEY: %v", err)
-		return errors.New("failed to create API key")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to create API key", []interface{}{err.Error()})
 	}
 
-	return nil
+	return apiKey, nil
 }
 
-func (r *account) DeleteAPIKey(key string) error {
+func (r *account) DeleteAPIKey(key string) *resp.Err {
 	_, err := r.db.Exec(DELETE_APIKEY, key)
 	if err != nil {
 		log.Printf("failed to execute db.Exec DELETE_APIKEY: %v", err)
-		return errors.New("failed to delete API key")
+		return resp.Error(http.StatusInternalServerError, "failed to delete API key", []interface{}{err.Error()})
 	}
 
 	return nil
 }
 
-func (r *account) GetAPIKeyById(id uuid.UUID) (*model.APIKey, error) {
+func (r *account) GetAPIKeyById(id uuid.UUID) (*model.APIKey, *resp.Err) {
 	row := r.db.QueryRow(GET_APIKEY_BY_Id, id)
 	var apiKey model.APIKey
 	var expiresAt sql.NullTime
@@ -432,10 +437,10 @@ func (r *account) GetAPIKeyById(id uuid.UUID) (*model.APIKey, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Println("API key not found")
-			return nil, errors.New("API key not found")
+			return nil, resp.Error(http.StatusInternalServerError, "API key not found", []interface{}{sql.ErrNoRows})
 		}
 		log.Printf("failed to execute row.Scan GET_APIKEY_BY_Id: %v", err)
-		return nil, errors.New("failed to get API Key")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get API Key", []interface{}{err.Error()})
 	}
 
 	if expiresAt.Valid {
@@ -447,7 +452,7 @@ func (r *account) GetAPIKeyById(id uuid.UUID) (*model.APIKey, error) {
 	return &apiKey, nil
 }
 
-func (r *account) GetAPIKeyByKey(key string) (*model.APIKey, error) {
+func (r *account) GetAPIKeyByKey(key string) (*model.APIKey, *resp.Err) {
 	row := r.db.QueryRow(GET_APIKEY_BY_KEY, key)
 	var apiKey model.APIKey
 	var expiresAt sql.NullTime
@@ -462,10 +467,10 @@ func (r *account) GetAPIKeyByKey(key string) (*model.APIKey, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Println("API key not found")
-			return nil, errors.New("API key not found")
+			return nil, resp.Error(http.StatusInternalServerError, "API key not found", []interface{}{sql.ErrNoRows})
 		}
 		log.Printf("failed to execute row.Scan GET_APIKEY_BY_KEY: %v", err)
-		return nil, errors.New("failed to get API Key")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get API Key", []interface{}{err.Error()})
 	}
 
 	if expiresAt.Valid {
@@ -477,44 +482,48 @@ func (r *account) GetAPIKeyByKey(key string) (*model.APIKey, error) {
 	return &apiKey, nil
 }
 
-func (r *account) AddAccountRole(accountId uuid.UUID, role string) error {
+func (r *account) AddAccountRole(accountId uuid.UUID, role string) (*model.AccountRole, *resp.Err) {
 	_, err := r.db.Exec(ADD_ACCOUNT_ROLE, accountId, role)
 	if err != nil {
 		if pqErr, ok := err.(*pq.Error); ok {
 			if pqErr.Code == "23505" {
 				log.Printf("duplicate key error on ADD_ACCOUNT: %v", pqErr.Detail)
-				return errors.New("this role is already assigned to the account")
+				return nil, resp.Error(http.StatusInternalServerError, "this role is already assigned to the account", []interface{}{pqErr.Detail})
 			}
 		}
 		log.Printf("failed to execute ADD_ACCOUNT_ROLE: %v", err)
-		return errors.New("failed to add role to account")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to add role to account", []interface{}{err.Error()})
 	}
-	return nil
+	res := model.AccountRole{
+		Id:   accountId,
+		Name: role,
+	}
+	return &res, nil
 }
 
-func (r *account) DeleteAccountRole(accountId uuid.UUID, role string) error {
+func (r *account) DeleteAccountRole(accountId uuid.UUID, role string) *resp.Err {
 	_, err := r.db.Exec(DELETE_ACCOUNT_ROLE, accountId, role)
 	if err != nil {
 		log.Printf("failed to execute DELETE_ACCOUNT_ROLE: %v", err)
-		return errors.New("failed to delete role from account")
+		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{err.Error()})
 	}
 	return nil
 }
 
-func (r *account) FindRolesByAccount(accountId uuid.UUID) ([]model.AccountRoles, error) {
+func (r *account) FindRolesByAccount(accountId uuid.UUID) ([]model.AccountRole, *resp.Err) {
 	rows, err := r.db.Query(FIND_ROLES_BY_ACCOUNT_Id, accountId)
 	if err != nil {
 		log.Printf("failed to execute db.Query FIND_ROLES_BY_ACCOUNT_Id: %v", err)
-		return nil, errors.New("failed to find roles")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{err.Error()})
 	}
 	defer rows.Close()
 
-	var roles []model.AccountRoles
+	var roles []model.AccountRole
 	for rows.Next() {
-		var role model.AccountRoles
+		var role model.AccountRole
 		if scanErr := rows.Scan(&role.Name); scanErr != nil {
 			log.Printf("failed to scan rows FIND_ROLES_BY_ACCOUNT_Id: %v", scanErr)
-			return nil, errors.New("failed to find roles")
+			return nil, resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{scanErr.Error()})
 		}
 		role.Id = accountId
 		roles = append(roles, role)
@@ -522,7 +531,7 @@ func (r *account) FindRolesByAccount(accountId uuid.UUID) ([]model.AccountRoles,
 
 	if rowsErr := rows.Err(); rowsErr != nil {
 		log.Printf("error while iterating over roles: %v", rowsErr)
-		return nil, errors.New("failed to find roles")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{rowsErr.Error()})
 	}
 
 	return roles, nil

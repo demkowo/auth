@@ -1,16 +1,19 @@
 module github.com/demkowo/auth
 
-go 1.21.5
+go 1.24.0
 
 require (
-	github.com/demkowo/dbclient v0.0.0-20250130201503-f1f9fe514fd7
+	github.com/demkowo/dbclient v0.0.0-20250210140252-01e93d6edc04
+	//github.com/demkowo/utils v0.0.0-20250212135937-7ad617747049
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
-	github.com/stretchr/testify v1.9.0
-	golang.org/x/crypto v0.32.0
+	github.com/stretchr/testify v1.10.0
+	golang.org/x/crypto v0.33.0
 )
+
+require github.com/demkowo/utils v0.0.0-20250212193647-8097f7b7b0fd
 
 require (
 	github.com/bytedance/sonic v1.11.6 // indirect
@@ -36,8 +39,8 @@ require (
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/net v0.25.0 // indirect
-	golang.org/x/sys v0.29.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

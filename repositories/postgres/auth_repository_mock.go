@@ -2,12 +2,11 @@ package postgres
 
 import (
 	"errors"
-	"fmt"
 	"log"
-	"reflect"
-	"time"
+	"net/http"
 
 	model "github.com/demkowo/auth/models"
+	"github.com/demkowo/utils/resp"
 	"github.com/google/uuid"
 )
 
@@ -20,12 +19,11 @@ type accountMock struct {
 }
 
 type Mock struct {
-	Error           map[string]error
-	Accounts        []*model.Account
-	Account         *model.Account
-	ApiKey          *model.APIKey
-	AccountRoles    []model.AccountRoles
-	ExpectedAccount *model.Account
+	Error        map[string]error
+	Accounts     []*model.Account
+	Account      *model.Account
+	ApiKey       *model.APIKey
+	AccountRoles []model.AccountRole
 }
 
 func NewAccountMock() *accountMock {
@@ -36,187 +34,113 @@ func (r *accountMock) SetMock(mock Mock) {
 	r.mock = mock
 }
 
-func (r *accountMock) Add(acc *model.Account) error {
-	compareAccounts(r.mock.ExpectedAccount, acc)
+func (r *accountMock) CreateTables() error {
+	if r.mock.Error["CreateTables"] != nil {
+		return r.mock.Error["CreateTables"]
+	}
 
+	return nil
+}
+
+func (r *accountMock) Add(acc *model.Account) (*model.Account, *resp.Err) {
 	if r.mock.Error["Add"] != nil {
 		log.Println(errors.New("Add error"))
-		return errors.New("failed to create account")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to create account", []interface{}{r.mock.Error["Add"].Error()})
 	}
 
-	return nil
+	return acc, nil
 }
 
-func (r *accountMock) Delete(accountId uuid.UUID) error {
+func (r *accountMock) Delete(accountId uuid.UUID) *resp.Err {
 	if r.mock.Error["Delete"] != nil {
-		return errors.New("failed to delete account")
+		return resp.Error(http.StatusInternalServerError, "failed to delete account", []interface{}{r.mock.Error["Delete"].Error()})
 	}
 	return nil
 }
 
-func (r *accountMock) Find() ([]*model.Account, error) {
+func (r *accountMock) Find() ([]*model.Account, *resp.Err) {
 	if r.mock.Error["Find"] != nil {
-		return nil, errors.New("failed to find accounts")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to find accounts", []interface{}{r.mock.Error["Find"].Error()})
 	}
 	return r.mock.Accounts, nil
 }
 
-func (r *accountMock) GetByEmail(email string) (*model.Account, error) {
+func (r *accountMock) GetByEmail(email string) (*model.Account, *resp.Err) {
 	if r.mock.Error["GetByEmail"] != nil {
-		return nil, errors.New("failed to get account")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{r.mock.Error["GetByEmail"].Error()})
 	}
 	return r.mock.Account, nil
 }
 
-func (r *accountMock) GetById(id uuid.UUID) (*model.Account, error) {
+func (r *accountMock) GetById(id uuid.UUID) (*model.Account, *resp.Err) {
 	if r.mock.Error["GetById"] != nil {
-		return nil, errors.New("failed to get account")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{r.mock.Error["GetById"].Error()})
 	}
 	return r.mock.Account, nil
 }
 
-func (r *accountMock) Update(acc *model.Account) error {
-	compareAccounts(r.mock.ExpectedAccount, acc)
+func (r *accountMock) Update(acc *model.Account) (*model.Account, *resp.Err) {
 	if r.mock.Error["Update"] != nil {
-		return errors.New("failed to update account")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to update account", []interface{}{r.mock.Error["Update"].Error()})
 	}
-	return nil
+	return acc, nil
 }
 
-func (r *accountMock) UpdatePassword(accountId uuid.UUID, newPassword string) error {
+func (r *accountMock) UpdatePassword(accountId uuid.UUID, newPassword string) *resp.Err {
 	if r.mock.Error["UpdatePassword"] != nil {
-		return errors.New("failed to change password")
+		return resp.Error(http.StatusInternalServerError, "failed to change password", []interface{}{r.mock.Error["UpdatePassword"].Error()})
 	}
 	return nil
 }
 
-func (r *accountMock) AddAPIKey(apiKey *model.APIKey) error {
+func (r *accountMock) AddAPIKey(apiKey *model.APIKey) (*model.APIKey, *resp.Err) {
 	if r.mock.Error["AddAPIKey"] != nil {
-		return errors.New("failed to create API key")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to create API key", []interface{}{r.mock.Error["AddAPIKey"].Error()})
 	}
-	return nil
+	return apiKey, nil
 }
 
-func (r *accountMock) DeleteAPIKey(key string) error {
+func (r *accountMock) DeleteAPIKey(key string) *resp.Err {
 	if r.mock.Error["DeleteAPIKey"] != nil {
-		return errors.New("failed to delete API key")
+		return resp.Error(http.StatusInternalServerError, "failed to delete API key", []interface{}{r.mock.Error["DeleteAPIKey"].Error()})
 	}
 	return nil
 }
 
-func (r *accountMock) GetAPIKeyById(id uuid.UUID) (*model.APIKey, error) {
+func (r *accountMock) GetAPIKeyById(id uuid.UUID) (*model.APIKey, *resp.Err) {
 	if r.mock.Error["GetAPIKeyById"] != nil {
-		return nil, errors.New("failed to get API Key")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get API Key", []interface{}{r.mock.Error["GetAPIKeyById"].Error()})
 	}
+
 	return r.mock.ApiKey, nil
 }
 
-func (r *accountMock) GetAPIKeyByKey(key string) (*model.APIKey, error) {
+func (r *accountMock) GetAPIKeyByKey(key string) (*model.APIKey, *resp.Err) {
 	if r.mock.Error["GetAPIKeyByKey"] != nil {
-		return nil, errors.New("failed to get API Key")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get API Key", []interface{}{r.mock.Error["GetAPIKeyByKey"].Error()})
 	}
+
 	return r.mock.ApiKey, nil
 }
 
-func (r *accountMock) AddAccountRole(accountId uuid.UUID, role string) error {
+func (r *accountMock) AddAccountRole(accountId uuid.UUID, role string) (*model.AccountRole, *resp.Err) {
 	if r.mock.Error["AddAccountRole"] != nil {
-		return errors.New("failed to add role to account")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to add role to account", []interface{}{r.mock.Error["AddAccountRole"].Error()})
 	}
-	return nil
+
+	return &model.AccountRole{Id: accountId, Name: role}, nil
 }
 
-func (r *accountMock) DeleteAccountRole(accountId uuid.UUID, role string) error {
+func (r *accountMock) DeleteAccountRole(accountId uuid.UUID, role string) *resp.Err {
 	if r.mock.Error["DeleteAccountRole"] != nil {
-		return errors.New("failed to delete role from account")
+		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{r.mock.Error["DeleteAccountRole"].Error()})
 	}
 	return nil
 }
 
-func (r *accountMock) FindRolesByAccount(accountId uuid.UUID) ([]model.AccountRoles, error) {
+func (r *accountMock) FindRolesByAccount(accountId uuid.UUID) ([]model.AccountRole, *resp.Err) {
 	if r.mock.Error["FindRolesByAccount"] != nil {
-		return nil, errors.New("failed to find roles")
+		return nil, resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{r.mock.Error["FindRolesByAccount"].Error()})
 	}
 	return r.mock.AccountRoles, nil
-}
-
-func compareAccounts(expected, received *model.Account) {
-	if expected == nil || received == nil {
-		return
-	}
-
-	differences := make(map[string]string)
-
-	vExpected := reflect.ValueOf(expected).Elem()
-	vReceived := reflect.ValueOf(received).Elem()
-	tExpected := vExpected.Type()
-
-	for i := 0; i < vExpected.NumField(); i++ {
-		fieldName := tExpected.Field(i).Name
-		eVal := vExpected.Field(i).Interface()
-		rVal := vReceived.Field(i).Interface()
-
-		switch fieldName {
-		case "Id":
-			if expected.Id == uuid.Nil && received.Id == uuid.Nil {
-				differences[fieldName] = "Expected a non-empty UUID, but got empty"
-			} else if expected.Id != uuid.Nil && received.Id != uuid.Nil && expected.Id != received.Id {
-				differences[fieldName] = fmt.Sprintf("Expected %v, got %v", expected.Id, received.Id)
-			}
-		case "Created", "Updated", "Blocked":
-			eTime := eVal.(time.Time)
-			rTime := rVal.(time.Time)
-			delta := time.Second
-			if rTime.Before(eTime.Add(-delta)) || rTime.After(eTime.Add(delta)) {
-				differences[fieldName] = fmt.Sprintf("Expected ~%v, got %v", eTime, rTime)
-			}
-
-		case "Roles":
-			eRoles := eVal.([]model.AccountRoles)
-			rRoles := rVal.([]model.AccountRoles)
-			if len(eRoles) != len(rRoles) {
-				differences[fieldName] = fmt.Sprintf("Expected %d roles, got %d", len(eRoles), len(rRoles))
-			} else {
-				for j := range eRoles {
-					if eRoles[j].Id != uuid.Nil && rRoles[j].Id != uuid.Nil && eRoles[j].Id != rRoles[j].Id {
-						differences[fmt.Sprintf("Roles[%d].Id", j)] = fmt.Sprintf("Expected %v, got %v", eRoles[j].Id, rRoles[j].Id)
-					}
-					if eRoles[j].Name != rRoles[j].Name {
-						differences[fmt.Sprintf("Roles[%d].Name", j)] = fmt.Sprintf("Expected %v, got %v", eRoles[j].Name, rRoles[j].Name)
-					}
-				}
-			}
-		case "APIKeys":
-			eKeys := eVal.([]model.APIKey)
-			rKeys := rVal.([]model.APIKey)
-			if len(eKeys) != len(rKeys) {
-				differences[fieldName] = fmt.Sprintf("Expected %d API keys, got %d", len(eKeys), len(rKeys))
-			} else {
-				for j := range eKeys {
-					if eKeys[j].Id != uuid.Nil && rKeys[j].Id != uuid.Nil && eKeys[j].Id != rKeys[j].Id {
-						differences[fmt.Sprintf("APIKeys[%d].Id", j)] = fmt.Sprintf("Expected %v, got %v", eKeys[j].Id, rKeys[j].Id)
-					}
-					if eKeys[j].Key != rKeys[j].Key {
-						differences[fmt.Sprintf("APIKeys[%d].Key", j)] = fmt.Sprintf("Expected %v, got %v", eKeys[j].Key, rKeys[j].Key)
-					}
-				}
-			}
-		case "Password":
-			if rVal.(string) != eVal.(string) {
-				log.Println("Invalid password")
-				differences[fieldName] = fmt.Sprintf("Expected %v, got %v", eVal.(string), rVal.(string))
-			}
-
-		default:
-			if eVal != rVal {
-				differences[fieldName] = fmt.Sprintf("Expected %v, got %v", eVal, rVal)
-			}
-		}
-	}
-
-	if len(differences) > 0 {
-		for k, v := range differences {
-			fmt.Printf("%s: %s\n", k, v)
-		}
-		log.Fatalf("Differences found while comparing accounts: %#v\n", differences)
-	}
 }

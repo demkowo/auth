@@ -1,10 +1,8 @@
-package app
+package postgres
 
 import (
 	"database/sql"
 	"log"
-
-	dbclient "github.com/demkowo/dbclient/client"
 )
 
 const (
@@ -45,17 +43,17 @@ const (
 	`
 )
 
-func CreateTables(db dbclient.DbClient) error {
+func (r *account) CreateTables() error {
 	var tableName sql.NullString
 
-	err := db.QueryRow(ACCOUNT_TABLE_EXIST).Scan(&tableName)
+	err := r.db.QueryRow(ACCOUNT_TABLE_EXIST).Scan(&tableName)
 	if err != nil {
 		log.Printf("failed to execute db.QueryRow ACCOUNT_TABLE_EXIST: %v\n", err)
 		return err
 	}
 	if !tableName.Valid {
 		log.Println("table account does not exist, creating it")
-		if _, err := db.Exec(CREATE_ACCOUNT_TABLE); err != nil {
+		if _, err := r.db.Exec(CREATE_ACCOUNT_TABLE); err != nil {
 			log.Printf("failed to create account table: %v\n", err)
 			return err
 		}
@@ -63,14 +61,14 @@ func CreateTables(db dbclient.DbClient) error {
 		log.Println("table account already exists")
 	}
 
-	err = db.QueryRow(ACCOUNT_ROLES_TABLE_EXIST).Scan(&tableName)
+	err = r.db.QueryRow(ACCOUNT_ROLES_TABLE_EXIST).Scan(&tableName)
 	if err != nil {
 		log.Printf("failed to execute db.QueryRow ACCOUNT_ROLES_TABLE_EXIST: %v\n", err)
 		return err
 	}
 	if !tableName.Valid {
 		log.Println("table account_roles does not exist, creating it")
-		if _, err := db.Exec(CREATE_ACCOUNT_ROLES_TABLE); err != nil {
+		if _, err := r.db.Exec(CREATE_ACCOUNT_ROLES_TABLE); err != nil {
 			log.Printf("failed to create account_roles table: %v\n", err)
 			return err
 		}
@@ -78,14 +76,14 @@ func CreateTables(db dbclient.DbClient) error {
 		log.Println("table account_roles already exists")
 	}
 
-	err = db.QueryRow(APIKEY_TABLE_EXIST).Scan(&tableName)
+	err = r.db.QueryRow(APIKEY_TABLE_EXIST).Scan(&tableName)
 	if err != nil {
 		log.Printf("failed to execute db.QueryRow APIKEY_TABLE_EXIST: %v\n", err)
 		return err
 	}
 	if !tableName.Valid {
 		log.Println("table api_keys does not exist, creating it")
-		if _, err := db.Exec(CREATE_APIKEY_TABLE); err != nil {
+		if _, err := r.db.Exec(CREATE_APIKEY_TABLE); err != nil {
 			log.Printf("failed to create api_keys table: %v\n", err)
 			return err
 		}

@@ -2,9 +2,18 @@ package app
 
 import (
 	handler "github.com/demkowo/auth/handlers"
+	"github.com/gin-gonic/gin"
 )
 
-func addAccountRoutes(h handler.Account) {
+var (
+	registered bool
+)
+
+func addAccountRoutes(router *gin.Engine, h handler.Account) {
+	if registered {
+		return
+	}
+
 	public := router.Group("/api/v1/auth")
 	{
 		public.POST("/add", h.Add)
@@ -31,4 +40,6 @@ func addAccountRoutes(h handler.Account) {
 		protected.GET("/find/roles/:account_id", h.FindRolesByAccount)
 		protected.POST("/edit-roles", h.UpdateRoles)
 	}
+
+	registered = true
 }

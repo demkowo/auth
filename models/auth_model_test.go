@@ -1,10 +1,12 @@
 package model
 
 import (
+	"net/http"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/demkowo/utils/resp"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -36,7 +38,7 @@ func Test_Validate_Success(t *testing.T) {
 
 	err := acc.Validate()
 
-	assert.NoError(t, err)
+	assert.Nil(t, err)
 }
 
 func Test_Validate_EmptyEmail(t *testing.T) {
@@ -45,8 +47,7 @@ func Test_Validate_EmptyEmail(t *testing.T) {
 
 	err := acc.Validate()
 
-	assert.Error(t, err)
-	assert.EqualError(t, err, "email, password and nickname can't be empty")
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "mandatory field is empty", []interface{}{"email, password and nickname can't be empty"}), err)
 }
 
 func Test_Validate_EmptyPassword(t *testing.T) {
@@ -55,8 +56,7 @@ func Test_Validate_EmptyPassword(t *testing.T) {
 
 	err := acc.Validate()
 
-	assert.Error(t, err)
-	assert.EqualError(t, err, "email, password and nickname can't be empty")
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "mandatory field is empty", []interface{}{"email, password and nickname can't be empty"}), err)
 }
 
 func Test_Validate_EmptyNickname(t *testing.T) {
@@ -65,8 +65,7 @@ func Test_Validate_EmptyNickname(t *testing.T) {
 
 	err := acc.Validate()
 
-	assert.Error(t, err)
-	assert.EqualError(t, err, "email, password and nickname can't be empty")
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "mandatory field is empty", []interface{}{"email, password and nickname can't be empty"}), err)
 }
 
 func Test_Validate_InvalidEmail(t *testing.T) {
@@ -75,8 +74,7 @@ func Test_Validate_InvalidEmail(t *testing.T) {
 
 	err := acc.Validate()
 
-	assert.Error(t, err)
-	assert.EqualError(t, err, "invalid email address")
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "invalid email address", []interface{}{}), err)
 }
 
 func Test_Validate_InvalidPasswordTooShort(t *testing.T) {
@@ -85,8 +83,8 @@ func Test_Validate_InvalidPasswordTooShort(t *testing.T) {
 
 	err := acc.Validate()
 
-	assert.Error(t, err)
-	assert.EqualError(t, err, "password must contain at least 8 characters, 1 capital letter, 1 special character, and 1 digit")
+	assert.Equal(t, resp.Error(http.StatusInternalServerError,
+		"invalid password", []interface{}{"password must contain at least 8 characters, 1 capital letter, 1 special character, and 1 digit"}), err)
 }
 
 func Test_Validate_InvalidPasswordNoCapitalLetter(t *testing.T) {
@@ -95,8 +93,8 @@ func Test_Validate_InvalidPasswordNoCapitalLetter(t *testing.T) {
 
 	err := acc.Validate()
 
-	assert.Error(t, err)
-	assert.EqualError(t, err, "password must contain at least 8 characters, 1 capital letter, 1 special character, and 1 digit")
+	assert.Equal(t, resp.Error(http.StatusInternalServerError,
+		"invalid password", []interface{}{"password must contain at least 8 characters, 1 capital letter, 1 special character, and 1 digit"}), err)
 }
 
 func Test_Validate_InvalidPasswordNoSpecialChar(t *testing.T) {
@@ -105,8 +103,8 @@ func Test_Validate_InvalidPasswordNoSpecialChar(t *testing.T) {
 
 	err := acc.Validate()
 
-	assert.Error(t, err)
-	assert.EqualError(t, err, "password must contain at least 8 characters, 1 capital letter, 1 special character, and 1 digit")
+	assert.Equal(t, resp.Error(http.StatusInternalServerError,
+		"invalid password", []interface{}{"password must contain at least 8 characters, 1 capital letter, 1 special character, and 1 digit"}), err)
 }
 
 func Test_Validate_InvalidPasswordNoDigits(t *testing.T) {
@@ -115,6 +113,6 @@ func Test_Validate_InvalidPasswordNoDigits(t *testing.T) {
 
 	err := acc.Validate()
 
-	assert.Error(t, err)
-	assert.EqualError(t, err, "password must contain at least 8 characters, 1 capital letter, 1 special character, and 1 digit")
+	assert.Equal(t, resp.Error(http.StatusInternalServerError,
+		"invalid password", []interface{}{"password must contain at least 8 characters, 1 capital letter, 1 special character, and 1 digit"}), err)
 }

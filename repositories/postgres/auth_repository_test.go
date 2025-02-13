@@ -5,45 +5,50 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
-	"reflect"
 	"testing"
 	"time"
 
 	model "github.com/demkowo/auth/models"
 	dbclient "github.com/demkowo/dbclient/client"
+	"github.com/demkowo/utils/resp"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"github.com/stretchr/testify/assert"
 )
 
 var (
-	db            dbclient.DbClient
-	err           error
-	a             *account
-	pqStringArray pq.StringArray
-	apiKeys       pq.StringArray
-	roles         pq.StringArray
-	sqlNullTime   sql.NullTime
-	expiresAt     sql.NullTime
-	blocked       sql.NullTime
+	errMap    map[string]error
+	db        dbclient.DbClient
+	a         *account
+	apiKeys   pq.StringArray
+	roles     pq.StringArray
+	expiresAt sql.NullTime
+	blocked   sql.NullTime
 
-	expectedValue = make(map[string]interface{})
-	acc           model.Account
+	pqError = &pq.Error{
+		Code:    "23505",
+		Message: "duplicate key value violates unique constraint",
+		Detail:  "Key (nickname)=(test) already exists.",
+	}
 
+	acc        model.Account
 	defaultAcc = model.Account{
 		Id:       uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"),
 		Nickname: "admin",
 		Email:    "admin@admin.com",
 		Password: "secretHashedPass",
-		Roles:    nil,
-		APIKeys:  nil,
+		Roles:    make([]model.AccountRole, len(roles)),
+		APIKeys:  make([]model.APIKey, len(apiKeys)),
 		Created:  time.Now(),
 		Updated:  time.Now(),
 		Blocked:  time.Time{},
 		Deleted:  false,
 	}
 
-	apiKey = model.APIKey{
+	apiKey        model.APIKey
+	defaultApiKey = model.APIKey{
 		Id:        uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"),
 		Key:       "someStrangeString",
 		AccountId: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99123472e3"),
@@ -51,22 +56,24 @@ var (
 		ExpiresAt: time.Now(),
 	}
 
-	accountRoles = model.AccountRoles{
+	role = model.AccountRole{
 		Id:   uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"),
 		Name: "admin",
 	}
 
-	pqError = &pq.Error{
-		Code:    "23505",
-		Message: "duplicate key value violates unique constraint",
-		Detail:  "Key (nickname)=(test) already exists.",
-	}
+	tableExists             = sql.NullString{String: "to_regclass", Valid: true}
+	accountTableExist       = dbclient.Mock{Query: ACCOUNT_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
+	createAccountTable      = dbclient.Mock{Query: CREATE_ACCOUNT_TABLE, Args: []interface{}{}, Columns: []string{"id", "nickname", "email", "password", "created", "updated", "blocked", "deleted"}, Rows: [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, blocked, acc.Deleted}}}
+	accountRolesTableExist  = dbclient.Mock{Query: ACCOUNT_ROLES_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
+	createAccountRolesTable = dbclient.Mock{Query: CREATE_ACCOUNT_ROLES_TABLE, Args: []interface{}{}, Columns: []string{"id", "name"}, Rows: [][]interface{}{{role.Id, role.Name}}}
+	apiKeysTableExist       = dbclient.Mock{Query: APIKEY_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
+	createApiKeyTable       = dbclient.Mock{Query: CREATE_APIKEY_TABLE, Args: []interface{}{}, Columns: []string{"id", "key", "account_id", "created_at", "expires_at"}, Rows: [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}}}
 )
 
 func TestMain(m *testing.M) {
 	dbclient.StartMock()
 
-	db, err = dbclient.Open("postgres", os.Getenv("DB_CLIENT"))
+	db, err := dbclient.Open("postgres", os.Getenv("DB_CLIENT"))
 	if err != nil {
 		log.Panic(err)
 	}
@@ -79,233 +86,320 @@ func TestMain(m *testing.M) {
 
 func clearMock() {
 	acc = defaultAcc
-	apiKeys = pqStringArray
-	roles = pqStringArray
-	expiresAt = sqlNullTime
-	blocked = sqlNullTime
+	apiKey = defaultApiKey
+	apiKeys = pq.StringArray{}
+	roles = pq.StringArray{}
+	expiresAt = sql.NullTime{}
+	blocked = sql.NullTime{}
+	errMap = make(map[string]error)
 }
 
 func Test_NewAccount_Success(t *testing.T) {
 	clearMock()
+
 	res := NewAccount(db)
 
-	if res == nil {
-		t.Fatal("NewAccount() returned nil, expected a valid interface")
-	}
-	accStruct, ok := res.(*account)
-	if !ok {
-		t.Fatalf("NewAccount() returned a type that is not *account, got %T", res)
-	}
-	if accStruct.db != db {
-		t.Fatalf("NewAccount() did not assign the correct db client, got: %v, expected: %v", accStruct.db, db)
+	if assert.NotNil(t, res) {
+		accStruct, ok := res.(*account)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, accStruct.db, db)
 	}
 }
 
-func Test_Add_accBlockedIsZero(t *testing.T) {
-	clearMock()
-	acc.Blocked = time.Time{}
-	expectedValue["index"] = 6
-	expectedValue["value"] = nil
+func Test_CreateTables_Success(t *testing.T) {
+	dbclient.AddMock(accountTableExist)
+	dbclient.AddMock(createAccountTable)
+	dbclient.AddMock(accountRolesTableExist)
+	dbclient.AddMock(createAccountRolesTable)
+	dbclient.AddMock(apiKeysTableExist)
+	dbclient.AddMock(createApiKeyTable)
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_ACCOUNT,
-		Args:  []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, acc.Blocked, acc.Deleted},
+	err := a.CreateTables()
 
-		ExpectedValue: expectedValue,
-	})
-
-	err := a.Add(&acc)
-
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
 }
 
-func Test_Add_accBlockedIsNotZero(t *testing.T) {
-	clearMock()
-
-	tn := time.Now()
-	acc.Blocked = tn
-	expectedValue["index"] = 6
-	expectedValue["value"] = tn
-
+func Test_CreateTables_ACCOUNT_TABLE_EXIST_Error(t *testing.T) {
 	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_ACCOUNT,
-		Args:  []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, acc.Blocked, acc.Deleted},
-
-		ExpectedValue: expectedValue,
+		Query: ACCOUNT_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{"invalidDataType"}},
 	})
 
-	err := a.Add(&acc)
+	err := a.CreateTables()
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-}
-func Test_Add_DuplicatedNicknameError(t *testing.T) {
-	clearMock()
-	// TODO: make possible adding roles while creating an account
-
-	expectedErr := "account with the given nickname already exists"
-
-	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_ACCOUNT,
-		Args:  []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, nil, acc.Deleted},
-
-		Error: pqError,
-	})
-
-	err := a.Add(&acc)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.EqualError(t, err, "type mismatch for column 'to_regclass': expected sql.NullString, got string")
 }
 
-func Test_Add_Error(t *testing.T) {
-	clearMock()
-
-	expectedErr := "failed to create account"
-
+func Test_CreateTables_CREATE_ACCOUNT_TABLE_Error(t *testing.T) {
+	dbclient.AddMock(accountTableExist)
 	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_ACCOUNT,
-		Args:  []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, nil, acc.Deleted},
-
-		Error: errors.New("exec error"),
+		Query: CREATE_ACCOUNT_TABLE, Args: []interface{}{"invalidArg"},
+		Columns: []string{"id", "nickname", "email", "password", "created", "updated", "blocked", "deleted"},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	err := a.Add(&acc)
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	err := a.CreateTables()
+
+	assert.EqualError(t, err, `number of arguments in mock can't be higher than number of arguments in method:
+[invalidArg]
+[]`)
+}
+
+func Test_CreateTables_CREATE_ACCOUNT_TABLE_AlreadyExists(t *testing.T) {
+	dbclient.AddMock(dbclient.Mock{
+		Query: ACCOUNT_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{tableExists}},
+	})
+	dbclient.AddMock(createAccountTable)
+	dbclient.AddMock(accountRolesTableExist)
+	dbclient.AddMock(createAccountRolesTable)
+	dbclient.AddMock(apiKeysTableExist)
+	dbclient.AddMock(createApiKeyTable)
+
+	err := a.CreateTables()
+
+	assert.Nil(t, err)
+}
+
+func Test_CreateTables_ACCOUNT_ROLES_TABLE_EXIST_Error(t *testing.T) {
+	dbclient.AddMock(accountTableExist)
+	dbclient.AddMock(createAccountTable)
+	dbclient.AddMock(dbclient.Mock{
+		Query: ACCOUNT_ROLES_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{"invalidDataType"}},
+	})
+
+	err := a.CreateTables()
+
+	assert.EqualError(t, err, "type mismatch for column 'to_regclass': expected sql.NullString, got string")
+}
+
+func Test_CreateTables_CREATE_ACCOUNT_ROLES_TABLE_Error(t *testing.T) {
+	dbclient.AddMock(accountTableExist)
+	dbclient.AddMock(createAccountTable)
+	dbclient.AddMock(accountRolesTableExist)
+	dbclient.AddMock(dbclient.Mock{
+		Query: CREATE_ACCOUNT_ROLES_TABLE, Args: []interface{}{"invalidArg"}, Columns: []string{"id", "name"}, Rows: [][]interface{}{{role.Id, role.Name}},
+	})
+
+	err := a.CreateTables()
+
+	assert.EqualError(t, err, `number of arguments in mock can't be higher than number of arguments in method:
+[invalidArg]
+[]`)
+}
+
+func Test_CreateTables_CREATE_ACCOUNT_ROLES_TABLE_AlreadyExists(t *testing.T) {
+	dbclient.AddMock(accountTableExist)
+	dbclient.AddMock(createAccountTable)
+	dbclient.AddMock(dbclient.Mock{
+		Query: ACCOUNT_ROLES_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{tableExists}},
+	})
+	dbclient.AddMock(createAccountRolesTable)
+	dbclient.AddMock(apiKeysTableExist)
+	dbclient.AddMock(createApiKeyTable)
+
+	err := a.CreateTables()
+
+	assert.Nil(t, err)
+}
+
+func Test_CreateTables_APIKEY_TABLE_EXIST_Error(t *testing.T) {
+	dbclient.AddMock(accountTableExist)
+	dbclient.AddMock(createAccountTable)
+	dbclient.AddMock(accountRolesTableExist)
+	dbclient.AddMock(createAccountRolesTable)
+	dbclient.AddMock(dbclient.Mock{
+		Query: APIKEY_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{"invalidDataType"}},
+	})
+
+	err := a.CreateTables()
+
+	assert.EqualError(t, err, "type mismatch for column 'to_regclass': expected sql.NullString, got string")
+}
+
+func Test_CreateTables_CREATE_APIKEY_TABLE_Error(t *testing.T) {
+	dbclient.AddMock(accountTableExist)
+	dbclient.AddMock(createAccountTable)
+	dbclient.AddMock(accountRolesTableExist)
+	dbclient.AddMock(createAccountRolesTable)
+	dbclient.AddMock(apiKeysTableExist)
+	dbclient.AddMock(dbclient.Mock{
+		Query: CREATE_APIKEY_TABLE, Args: []interface{}{"invalidArg"}, Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
+		Rows: [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}},
+	})
+
+	err := a.CreateTables()
+
+	assert.EqualError(t, err, `number of arguments in mock can't be higher than number of arguments in method:
+[invalidArg]
+[]`)
+}
+
+func Test_CreateTables_CREATE_APIKEY_TABLE_AlreadyExists(t *testing.T) {
+	dbclient.AddMock(accountTableExist)
+	dbclient.AddMock(createAccountTable)
+	dbclient.AddMock(accountRolesTableExist)
+	dbclient.AddMock(createAccountRolesTable)
+	dbclient.AddMock(dbclient.Mock{
+		Query: APIKEY_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{tableExists}},
+	})
+	dbclient.AddMock(createApiKeyTable)
+
+	err := a.CreateTables()
+
+	assert.Nil(t, err)
 }
 
 func Test_Add_Success(t *testing.T) {
 	clearMock()
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_ACCOUNT,
-		Args:  []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, nil, acc.Deleted},
+		Query: ADD_ACCOUNT, Args: []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, nil, acc.Deleted},
 	})
 
-	err := a.Add(&acc)
+	account, err := a.Add(&acc)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
+	assert.Nil(t, err)
+	assert.NotNil(t, account)
+}
+
+func Test_Add_accBlockedIsZero(t *testing.T) {
+	clearMock()
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: ADD_ACCOUNT, Args: []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, acc.Blocked, acc.Deleted},
+	})
+
+	account, err := a.Add(&acc)
+
+	assert.Nil(t, err)
+	if assert.NotNil(t, account) {
+		assert.Equal(t, &acc.Blocked, &account.Blocked)
 	}
+}
+
+func Test_Add_accBlockedIsNotZero(t *testing.T) {
+	clearMock()
+
+	acc.Blocked = time.Now()
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: ADD_ACCOUNT, Args: []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, acc.Blocked, acc.Deleted},
+	})
+
+	account, err := a.Add(&acc)
+
+	assert.Nil(t, err)
+	if assert.NotNil(t, account) {
+		assert.Equal(t, &acc.Blocked, &account.Blocked)
+	}
+}
+func Test_Add_DuplicatedNicknameError(t *testing.T) {
+	clearMock()
+
+	errMap["Exec"] = pqError
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: ADD_ACCOUNT, Args: []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, nil, acc.Deleted},
+		Error: errMap,
+	})
+
+	account, err := a.Add(&acc)
+
+	assert.Nil(t, account)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "account with the given nickname already exists", []interface{}{pqError.Detail}), err)
+}
+
+func Test_Add_Error(t *testing.T) {
+	clearMock()
+
+	errMap["Exec"] = errors.New("Exec error")
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: ADD_ACCOUNT, Args: []interface{}{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, nil, acc.Deleted},
+		Error: errMap,
+	})
+
+	account, err := a.Add(&acc)
+
+	assert.Nil(t, account)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to create account", []interface{}{"Exec error"}), err)
+}
+
+func Test_Delete_Success(t *testing.T) {
+	clearMock()
+
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT, Args: []interface{}{time.Now(), acc.Id}})
+
+	err := a.Delete(acc.Id)
+
+	assert.Nil(t, err)
 }
 
 func Test_Delete_Error(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to delete account"
+	errMap["Exec"] = errors.New("Exec error")
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: DELETE_ACCOUNT,
-		Args:  []interface{}{time.Now(), acc.Id},
-
-		Error: errors.New("test error"),
+		Query: DELETE_ACCOUNT, Args: []interface{}{time.Now(), acc.Id},
+		Error: errMap,
 	})
 
 	err := a.Delete(acc.Id)
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to delete account", []interface{}{"Exec error"}), err)
 }
 
-func Test_Delete_Success(t *testing.T) {
+func Test_Find_Success(t *testing.T) {
 	clearMock()
+
+	acc.APIKeys = nil
+
 	dbclient.AddMock(dbclient.Mock{
-		Query: DELETE_ACCOUNT,
-		Args:  []interface{}{time.Now(), acc.Id},
+		Query:   FIND_ACCOUNTS,
+		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	err := a.Delete(acc.Id)
+	accounts, err := a.Find()
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(accounts))
+	assert.Equal(t, &acc, accounts[0])
 }
 
 func Test_Find_Error(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to find accounts"
+	errMap["Query"] = errors.New("Query error")
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ACCOUNTS,
-
+		Query:   FIND_ACCOUNTS,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, acc.Blocked, acc.Deleted},
-			{uuid.New(), "test", "test@test.com", "pass", roles, time.Now(), time.Now(), time.Time{}, false},
-			{uuid.New(), "asd", "asd@asd.com", "pass", roles, time.Now(), time.Now(), time.Time{}, false},
-		},
-
-		Error: errors.New("test error"),
+		Error:   errMap,
 	})
 
-	_, err := a.Find()
+	accounts, err := a.Find()
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, accounts)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to find accounts", []interface{}{"Query error"}), err)
 }
 
 func Test_Find_ScanError(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to find accounts"
+	errMap["Scan"] = errors.New("Scan error")
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ACCOUNTS,
-
+		Query:   FIND_ACCOUNTS,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, acc.Blocked, acc.Deleted},
-			{uuid.New(), "test", "test@test.com", "pass", roles, time.Now(), time.Now(), time.Time{}, false},
-			{uuid.New(), "asd", "asd@asd.com", "pass", roles, time.Now(), time.Now(), time.Time{}, false},
-		},
-
-		ScanErr: errors.New("test error"),
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, acc.Blocked, acc.Deleted}},
+		Error:   errMap,
 	})
 
-	_, err := a.Find()
+	accounts, err := a.Find()
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, accounts)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to find accounts", []interface{}{"Scan error"}), err)
 }
 
 func Test_Find_blockedIsValid(t *testing.T) {
@@ -314,187 +408,122 @@ func Test_Find_blockedIsValid(t *testing.T) {
 	tn := time.Now()
 	blocked.Time = tn
 	blocked.Valid = true
-	expectedValue["index"] = 7
-	expectedValue["value"] = &sql.NullTime{Valid: true, Time: tn}
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ACCOUNTS,
-
+		Query:   FIND_ACCOUNTS,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
-
-		ExpectedValue: expectedValue,
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	_, err := a.Find()
+	accounts, err := a.Find()
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, tn, accounts[0].Blocked)
 }
 
 func Test_Find_blockedIsNotValid(t *testing.T) {
 	clearMock()
 
 	blocked.Valid = false
-	expectedValue["index"] = 7
-	expectedValue["value"] = &sql.NullTime{Valid: false, Time: time.Time{}}
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ACCOUNTS,
-
+		Query:   FIND_ACCOUNTS,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
-
-		ExpectedValue: expectedValue,
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	_, err := a.Find()
+	accounts, err := a.Find()
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, time.Time{}, accounts[0].Blocked)
 }
 
 func Test_Find_CheckRoles(t *testing.T) {
 	clearMock()
 
 	roles = append(roles, "admin", "tester")
-	expectedValue["index"] = 4
-	expectedValue["value"] = &roles
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ACCOUNTS,
-
+		Query:   FIND_ACCOUNTS,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
-
-		ExpectedValue: expectedValue,
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	_, err := a.Find()
+	accounts, err := a.Find()
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, []model.AccountRole{{Id: acc.Id, Name: "admin"}, {Id: acc.Id, Name: "tester"}}, accounts[0].Roles)
 }
 
 func Test_Find_RowsError(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to find accounts"
+	errMap["Rows"] = errors.New("Rows error")
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ACCOUNTS,
-
+		Query:   FIND_ACCOUNTS,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-			{uuid.New(), "test", "test@test.com", "pass", roles, time.Now(), time.Now(), blocked, false},
-			{uuid.New(), "asd", "asd@asd.com", "pass", roles, time.Now(), time.Now(), blocked, false},
-		},
-
-		RowsErr: errors.New("test error"),
+		Error:   errMap,
 	})
 
-	_, err := a.Find()
+	accounts, err := a.Find()
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, accounts)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to find accounts", []interface{}{"Rows error"}), err)
 }
 
-func Test_Find_Success(t *testing.T) {
+func Test_GetByEmail_Success(t *testing.T) {
 	clearMock()
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ACCOUNTS,
+	acc.APIKeys = nil
 
+	dbclient.AddMock(dbclient.Mock{
+		Args:    []interface{}{acc.Email},
+		Query:   GET_ACCOUNT_BY_EMAIL,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-			{uuid.New(), "test", "test@test.com", "pass", roles, time.Now(), time.Now(), blocked, false},
-			{uuid.New(), "asd", "asd@asd.com", "pass", roles, time.Now(), time.Now(), blocked, false},
-		},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	_, err := a.Find()
+	account, err := a.GetByEmail(acc.Email)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
+	assert.Nil(t, err)
+	if assert.NotNil(t, account) {
+		assert.Equal(t, &acc, account)
 	}
 }
 
 func Test_GetByEmail_Error(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to get account"
+	errMap["Scan"] = errors.New("Scan error")
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: GET_ACCOUNT_BY_EMAIL,
-		Args:  []interface{}{acc.Email},
-
+		Query: GET_ACCOUNT_BY_EMAIL, Args: []interface{}{acc.Email},
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
-
-		Error: errors.New("test error"),
+		Error:   errMap,
 	})
 
-	_, err := a.GetByEmail(acc.Email)
+	account, err := a.GetByEmail(acc.Email)
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, account)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{"Scan error"}), err)
 }
 
 func Test_GetByEmail_NotFoundError(t *testing.T) {
 	clearMock()
 
-	expectedErr := fmt.Sprintf("account with email %s not found", acc.Email)
+	errMap["Scan"] = sql.ErrNoRows
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Email},
-		Query: GET_ACCOUNT_BY_EMAIL,
-
+		Args: []interface{}{acc.Email}, Query: GET_ACCOUNT_BY_EMAIL,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, acc.Blocked, acc.Deleted},
-		},
-
-		Error: sql.ErrNoRows,
+		Error:   errMap,
 	})
 
-	_, err := a.GetByEmail(acc.Email)
+	account, err := a.GetByEmail(acc.Email)
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, account)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, fmt.Sprintf("account with email %s not found", acc.Email), []interface{}{sql.ErrNoRows}), err)
 }
 
 func Test_GetByEmail_blockedIsValid(t *testing.T) {
@@ -505,25 +534,17 @@ func Test_GetByEmail_blockedIsValid(t *testing.T) {
 	blocked.Valid = true
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Email},
-		Query: GET_ACCOUNT_BY_EMAIL,
-
+		Args:    []interface{}{acc.Email},
+		Query:   GET_ACCOUNT_BY_EMAIL,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	res, err := a.GetByEmail(acc.Email)
+	account, err := a.GetByEmail(acc.Email)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if res.Blocked != tn {
-		t.Fatalf(`
-invalid response: 
-expected res.Blocked: '%v' 
-received res.Blocked: '%v'`, tn, res.Blocked)
+	assert.Nil(t, err)
+	if assert.NotNil(t, account) {
+		assert.Equal(t, tn, account.Blocked)
 	}
 }
 
@@ -531,142 +552,87 @@ func Test_GetByEmail_blockedIsNotValid(t *testing.T) {
 	clearMock()
 
 	blocked.Valid = false
-	expectedBlockedTime := time.Time{}
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Email},
-		Query: GET_ACCOUNT_BY_EMAIL,
-
+		Args: []interface{}{acc.Email}, Query: GET_ACCOUNT_BY_EMAIL,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	res, err := a.GetByEmail(acc.Email)
+	account, err := a.GetByEmail(acc.Email)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if res.Blocked != expectedBlockedTime {
-		t.Fatalf(`
-invalid response: 
-expected res.Blocked: '%v' 
-received res.Blocked: '%v'`, expectedBlockedTime, res.Blocked)
+	assert.Nil(t, err)
+	if assert.NotNil(t, account) {
+		assert.Equal(t, time.Time{}, account.Blocked)
 	}
 }
 
 func Test_GetByEmail_CheckRoles(t *testing.T) {
 	clearMock()
 
-	acc.Id = uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3")
 	roles = append(roles, "admin", "tester")
-	expectedRoles := []model.AccountRoles{
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"},
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "tester"},
-	}
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Email},
-		Query: GET_ACCOUNT_BY_EMAIL,
+		Args: []interface{}{acc.Email}, Query: GET_ACCOUNT_BY_EMAIL,
 
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	res, err := a.GetByEmail(acc.Email)
+	account, err := a.GetByEmail(acc.Email)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if !reflect.DeepEqual(res.Roles, expectedRoles) {
-		t.Fatalf(`
-invalid response: 
-expected res.Roles: '%v' 
-received res.Roles: '%v'`, expectedRoles, res.Roles)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, []model.AccountRole{{Id: acc.Id, Name: "admin"}, {Id: acc.Id, Name: "tester"}}, account.Roles)
 }
 
-func Test_GetByEmail_Success(t *testing.T) {
+func Test_GetById_Success(t *testing.T) {
 	clearMock()
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Email},
-		Query: GET_ACCOUNT_BY_EMAIL,
+		Args: []interface{}{acc.Id}, Query: GET_ACCOUNT_BY_ID,
 
-		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
+		Columns: []string{"id", "nickname", "email", "password", "roles", "api_keys", "created", "updated", "blocked", "deleted"},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, apiKeys, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	_, err := a.GetByEmail(acc.Email)
+	account, err := a.GetById(acc.Id)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, &acc, account)
 }
 
 func Test_GetById_Error(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to get account"
+	errMap["Scan"] = errors.New("Scan error")
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Id},
-		Query: GET_ACCOUNT_BY_ID,
-
+		Args: []interface{}{acc.Id}, Query: GET_ACCOUNT_BY_ID,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
-
-		Error: errors.New("test error"),
+		Error:   errMap,
 	})
 
-	_, err := a.GetById(acc.Id)
+	account, err := a.GetById(acc.Id)
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, account)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{"Scan error"}), err)
 }
 
 func Test_GetById_NotFoundError(t *testing.T) {
 	clearMock()
 
-	expectedErr := "account not found"
+	errMap["Scan"] = sql.ErrNoRows
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: GET_ACCOUNT_BY_ID,
-		Args:  []interface{}{acc.Id},
-
+		Query: GET_ACCOUNT_BY_ID, Args: []interface{}{acc.Id},
 		Columns: []string{"id", "nickname", "email", "password", "roles", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
-
-		Error: sql.ErrNoRows,
+		Error:   errMap,
 	})
 
-	_, err := a.GetById(acc.Id)
+	account, err := a.GetById(acc.Id)
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, account)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "account not found", []interface{}{sql.ErrNoRows}), err)
 }
 
 func Test_GetById_blockedIsValid(t *testing.T) {
@@ -677,25 +643,16 @@ func Test_GetById_blockedIsValid(t *testing.T) {
 	blocked.Valid = true
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Id},
-		Query: GET_ACCOUNT_BY_ID,
-
+		Args: []interface{}{acc.Id}, Query: GET_ACCOUNT_BY_ID,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "api_keys", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, apiKeys, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, apiKeys, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	res, err := a.GetById(acc.Id)
+	account, err := a.GetById(acc.Id)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if res.Blocked != tn {
-		t.Fatalf(`
-invalid response: 
-expected res.Blocked: '%v' 
-received res.Blocked: '%v'`, tn, res.Blocked)
+	assert.Nil(t, err)
+	if assert.NotNil(t, account) {
+		assert.Equal(t, tn, account.Blocked)
 	}
 }
 
@@ -703,140 +660,87 @@ func Test_GetById_blockedIsNotValid(t *testing.T) {
 	clearMock()
 
 	blocked.Valid = true
-	expectedBlockedTime := time.Time{}
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Id},
-		Query: GET_ACCOUNT_BY_ID,
-
+		Args: []interface{}{acc.Id}, Query: GET_ACCOUNT_BY_ID,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "api_keys", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, apiKeys, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, apiKeys, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	res, err := a.GetById(acc.Id)
+	account, err := a.GetById(acc.Id)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if res.Blocked != expectedBlockedTime {
-		t.Fatalf(`
-invalid response: 
-expected res.Blocked: '%v' 
-received res.Blocked: '%v'`, expectedBlockedTime, res.Blocked)
+	assert.Nil(t, err)
+	if assert.NotNil(t, account) {
+		assert.Equal(t, time.Time{}, account.Blocked)
 	}
 }
 
 func Test_GetById_CheckRoles(t *testing.T) {
 	clearMock()
 
-	acc.Id = uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3")
 	roles = append(roles, "admin", "tester")
-	expectedRoles := []model.AccountRoles{
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"},
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "tester"},
-	}
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Id},
-		Query: GET_ACCOUNT_BY_ID,
-
+		Args: []interface{}{acc.Id}, Query: GET_ACCOUNT_BY_ID,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "api_keys", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, apiKeys, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, apiKeys, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	res, err := a.GetById(acc.Id)
+	account, err := a.GetById(acc.Id)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if !reflect.DeepEqual(res.Roles, expectedRoles) {
-		t.Fatalf(`
-invalid response: 
-expected res.Roles: '%v' 
-received res.Roles: '%v'`, expectedRoles, res.Roles)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, []model.AccountRole{{Id: acc.Id, Name: "admin"}, {Id: acc.Id, Name: "tester"}}, account.Roles)
 }
 
 func Test_GetById_CheckApiKeys(t *testing.T) {
-	// TODO: make possible fetching all info about apiKeys
 	clearMock()
 
 	apiKeys = append(apiKeys, "key1", "key2")
-	expectedKeys := []model.APIKey{
-		{Key: "key1", AccountId: acc.Id},
-		{Key: "key2", AccountId: acc.Id},
-	}
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Id},
-		Query: GET_ACCOUNT_BY_ID,
-
+		Args: []interface{}{acc.Id}, Query: GET_ACCOUNT_BY_ID,
 		Columns: []string{"id", "nickname", "email", "password", "roles", "api_keys", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, apiKeys, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
+		Rows:    [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, apiKeys, acc.Created, acc.Updated, blocked, acc.Deleted}},
 	})
 
-	res, err := a.GetById(acc.Id)
+	account, err := a.GetById(acc.Id)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if !reflect.DeepEqual(res.APIKeys, expectedKeys) {
-		t.Fatalf(`
-invalid response: 
-expected res.APIKeys: '%v' 
-received res.APIKeys: '%v'`, expectedKeys, res.APIKeys)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, []model.APIKey{
+		{AccountId: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Key: "key1"},
+		{AccountId: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Key: "key2"},
+	}, account.APIKeys)
 }
 
-func Test_GetById_Success(t *testing.T) {
+func Test_Update_Success(t *testing.T) {
 	clearMock()
 
 	dbclient.AddMock(dbclient.Mock{
-		Args:  []interface{}{acc.Id},
-		Query: GET_ACCOUNT_BY_ID,
-
-		Columns: []string{"id", "nickname", "email", "password", "roles", "api_keys", "created", "updated", "blocked", "deleted"},
-		Rows: [][]interface{}{
-			{acc.Id, acc.Nickname, acc.Email, acc.Password, roles, apiKeys, acc.Created, acc.Updated, blocked, acc.Deleted},
-		},
+		Query: EDIT_ACCOUNT, Args: []interface{}{acc.Email, nil, acc.Updated, acc.Id},
+		Columns: []string{"email", "blocked", "updated", "id"},
+		Rows:    [][]interface{}{{acc.Email, blocked, acc.Updated, acc.Id}},
 	})
 
-	_, err := a.GetById(acc.Id)
+	account, err := a.Update(&acc)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, &acc, account)
 }
 
 func Test_Update_accBlockedIsZero(t *testing.T) {
 	clearMock()
 
-	acc.Blocked = time.Time{}
-	expectedValue["index"] = 1
-	expectedValue["value"] = nil
-
 	dbclient.AddMock(dbclient.Mock{
-		Query: EDIT_ACCOUNT,
-		Args:  []interface{}{acc.Email, acc.Blocked, acc.Updated, acc.Id},
-
+		Query: EDIT_ACCOUNT, Args: []interface{}{acc.Email, acc.Blocked, acc.Updated, acc.Id},
 		Columns: []string{"email", "blocked", "updated", "id"},
-		Rows: [][]interface{}{
-			{acc.Email, blocked, acc.Updated, acc.Id},
-		},
-
-		ExpectedValue: expectedValue,
+		Rows:    [][]interface{}{{acc.Email, blocked, acc.Updated, acc.Id}},
 	})
 
-	err := a.Update(&acc)
+	account, err := a.Update(&acc)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
+	assert.Nil(t, err)
+	if assert.NotNil(t, account) {
+		assert.Equal(t, time.Time{}, account.Blocked)
 	}
 }
 
@@ -845,164 +749,86 @@ func Test_Update_accBlockedIsNotZero(t *testing.T) {
 
 	tn := time.Now()
 	acc.Blocked = tn
-	expectedValue["index"] = 1
-	expectedValue["value"] = tn
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: EDIT_ACCOUNT,
-		Args:  []interface{}{acc.Email, acc.Blocked, acc.Updated, acc.Id},
-
+		Query: EDIT_ACCOUNT, Args: []interface{}{acc.Email, acc.Blocked, acc.Updated, acc.Id},
 		Columns: []string{"email", "blocked", "updated", "id"},
-		Rows: [][]interface{}{
-			{acc.Email, blocked, acc.Updated, acc.Id},
-		},
-
-		ExpectedValue: expectedValue,
+		Rows:    [][]interface{}{{acc.Email, blocked, acc.Updated, acc.Id}},
 	})
 
-	err := a.Update(&acc)
+	account, err := a.Update(&acc)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
+	assert.Nil(t, err)
+	if assert.NotNil(t, account) {
+		assert.Equal(t, tn, account.Blocked)
 	}
 }
 
 func Test_Update_Error(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to update account"
+	errMap["Exec"] = errors.New("Exec error")
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: EDIT_ACCOUNT,
-		Args:  []interface{}{acc.Email, nil, acc.Updated, acc.Id},
-
+		Query: EDIT_ACCOUNT, Args: []interface{}{acc.Email, nil, acc.Updated, acc.Id},
 		Columns: []string{"email", "blocked", "updated", "id"},
-		Rows: [][]interface{}{
-			{acc.Email, blocked, acc.Updated, acc.Id},
-		},
-
-		Error: errors.New("test error"),
+		Error:   errMap,
 	})
 
-	err := a.Update(&acc)
+	account, err := a.Update(&acc)
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
-}
-
-func Test_Update_Success(t *testing.T) {
-	clearMock()
-
-	dbclient.AddMock(dbclient.Mock{
-		Query: EDIT_ACCOUNT,
-		Args:  []interface{}{acc.Email, nil, acc.Updated, acc.Id},
-
-		Columns: []string{"email", "blocked", "updated", "id"},
-		Rows: [][]interface{}{
-			{acc.Email, blocked, acc.Updated, acc.Id},
-		},
-	})
-
-	err := a.Update(&acc)
-
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-}
-
-func Test_UpdatePassword_Error(t *testing.T) {
-	clearMock()
-
-	expectedErr := "failed to change password"
-
-	dbclient.AddMock(dbclient.Mock{
-		Query: EDIT_ACCOUNT_PASSWORD,
-		Args:  []interface{}{"newPassword", time.Now(), acc.Id},
-
-		Error: errors.New("test error"),
-	})
-
-	err := a.UpdatePassword(acc.Id, "newPassword")
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, account)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to update account", []interface{}{"Exec error"}), err)
 }
 
 func Test_UpdatePassword_Success(t *testing.T) {
 	clearMock()
 
+	dbclient.AddMock(dbclient.Mock{Query: EDIT_ACCOUNT_PASSWORD, Args: []interface{}{"newPassword", time.Now(), acc.Id}})
+
+	err := a.UpdatePassword(acc.Id, "newPassword")
+
+	assert.Nil(t, err)
+}
+
+func Test_UpdatePassword_Error(t *testing.T) {
+	clearMock()
+
+	errMap["Exec"] = errors.New("Exec error")
+
 	dbclient.AddMock(dbclient.Mock{
 		Query: EDIT_ACCOUNT_PASSWORD,
 		Args:  []interface{}{"newPassword", time.Now(), acc.Id},
+		Error: errMap,
 	})
 
 	err := a.UpdatePassword(acc.Id, "newPassword")
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to change password", []interface{}{"Exec error"}), err)
 }
 
-func Test_AddAPIKey_Error(t *testing.T) {
+func Test_AddAPIKey_Success(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to create API key"
+	dbclient.AddMock(dbclient.Mock{Query: ADD_APIKEY, Args: []interface{}{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}})
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_APIKEY,
-		Args:  []interface{}{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt},
+	key, err := a.AddAPIKey(&apiKey)
 
-		Error: errors.New("test error"),
-	})
-
-	err := a.AddAPIKey(&apiKey)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, &apiKey, key)
 }
 
 func Test_AddAPIKey_apiKeyExpiresAtIsZero(t *testing.T) {
-	// TODO: checkExpectedValue to return error instead of t.Fatal
 	clearMock()
 
 	apiKey.ExpiresAt = time.Time{}
-	expectedValue["index"] = 4
-	expectedValue["value"] = nil
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_APIKEY,
-		Args:  []interface{}{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt},
+	dbclient.AddMock(dbclient.Mock{Query: ADD_APIKEY, Args: []interface{}{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}})
 
-		ExpectedValue: expectedValue,
-	})
+	apiKey, err := a.AddAPIKey(&apiKey)
 
-	err := a.AddAPIKey(&apiKey)
-
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-
+	assert.Nil(t, err)
+	assert.Equal(t, time.Time{}, apiKey.ExpiresAt)
 }
 
 func Test_AddAPIKey_apiKeyExpiresAtIsNotZero(t *testing.T) {
@@ -1010,126 +836,94 @@ func Test_AddAPIKey_apiKeyExpiresAtIsNotZero(t *testing.T) {
 
 	tn := time.Now()
 	apiKey.ExpiresAt = tn
-	expectedValue["index"] = 4
-	expectedValue["value"] = tn
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_APIKEY,
-		Args:  []interface{}{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt},
+	dbclient.AddMock(dbclient.Mock{Query: ADD_APIKEY, Args: []interface{}{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}})
 
-		ExpectedValue: expectedValue,
-	})
+	apiKey, err := a.AddAPIKey(&apiKey)
 
-	err := a.AddAPIKey(&apiKey)
-
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, tn, apiKey.ExpiresAt)
 }
 
-func Test_AddAPIKey_Success(t *testing.T) {
+func Test_AddAPIKey_Error(t *testing.T) {
 	clearMock()
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_APIKEY,
-		Args:  []interface{}{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt},
-	})
-
-	err := a.AddAPIKey(&apiKey)
-
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-}
-
-func Test_DeleteAPIKey_Error(t *testing.T) {
-	clearMock()
-
-	expectedErr := "failed to delete API key"
+	errMap["Exec"] = errors.New("Exec error")
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: DELETE_APIKEY,
-		Args:  []interface{}{apiKey.Key},
-
-		Error: errors.New("test error"),
+		Query: ADD_APIKEY, Args: []interface{}{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt},
+		Error: errMap,
 	})
 
-	err := a.DeleteAPIKey(apiKey.Key)
+	apiKey, err := a.AddAPIKey(&apiKey)
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, apiKey)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to create API key", []interface{}{"Exec error"}), err)
 }
 
 func Test_DeleteAPIKey_Success(t *testing.T) {
 	clearMock()
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: DELETE_APIKEY,
-		Args:  []interface{}{apiKey.Key},
-	})
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_APIKEY, Args: []interface{}{apiKey.Key}})
 
 	err := a.DeleteAPIKey(apiKey.Key)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+}
+
+func Test_DeleteAPIKey_Error(t *testing.T) {
+	clearMock()
+
+	errMap["Exec"] = errors.New("Exec error")
+
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_APIKEY, Args: []interface{}{apiKey.Key}, Error: errMap})
+
+	err := a.DeleteAPIKey(apiKey.Key)
+
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to delete API key", []interface{}{"Exec error"}), err)
+}
+
+func Test_GetAPIKeyById_Success(t *testing.T) {
+	clearMock()
+
+	apiKey.ExpiresAt = time.Time{}
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: GET_APIKEY_BY_Id, Args: []interface{}{apiKey.Id},
+		Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
+		Rows:    [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt}},
+	})
+
+	key, err := a.GetAPIKeyById(apiKey.Id)
+
+	assert.Nil(t, err)
+	assert.Equal(t, &apiKey, key)
 }
 
 func Test_GetAPIKeyById_Error(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to get API Key"
+	errMap["Scan"] = errors.New("Scan error")
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_Id,
-		Args:  []interface{}{apiKey.Id},
+	dbclient.AddMock(dbclient.Mock{Query: GET_APIKEY_BY_Id, Args: []interface{}{apiKey.Id}, Error: errMap})
 
-		Error: errors.New("test error"),
-	})
+	apiKey, err := a.GetAPIKeyById(apiKey.Id)
 
-	_, err := a.GetAPIKeyById(apiKey.Id)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, apiKey)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to get API Key", []interface{}{"Scan error"}), err)
 }
 
 func Test_GetAPIKeyById_NotFoundError(t *testing.T) {
 	clearMock()
 
-	expectedErr := "API key not found"
+	errMap["Scan"] = sql.ErrNoRows
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_Id,
-		Args:  []interface{}{apiKey.Id},
+	dbclient.AddMock(dbclient.Mock{Query: GET_APIKEY_BY_Id, Args: []interface{}{apiKey.Id}, Error: errMap})
 
-		Error: sql.ErrNoRows,
-	})
+	apiKey, err := a.GetAPIKeyById(apiKey.Id)
 
-	_, err := a.GetAPIKeyById(apiKey.Id)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, apiKey)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "API key not found", []interface{}{sql.ErrNoRows}), err)
 }
 
 func Test_GetAPIKeyById_ExpiresAtIsValid(t *testing.T) {
@@ -1140,125 +934,75 @@ func Test_GetAPIKeyById_ExpiresAtIsValid(t *testing.T) {
 	expiresAt.Valid = true
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_Id,
-		Args:  []interface{}{apiKey.Id},
-
+		Query: GET_APIKEY_BY_Id, Args: []interface{}{apiKey.Id},
 		Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
-		Rows: [][]interface{}{
-			{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt},
-		},
+		Rows:    [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt}},
 	})
 
-	res, err := a.GetAPIKeyById(apiKey.Id)
+	apiKey, err := a.GetAPIKeyById(apiKey.Id)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if !reflect.DeepEqual(res.ExpiresAt, expiresAt.Time) {
-		t.Fatalf(`
-invalid response: 
-expected res.ExpiresAt: '%v' 
-received res.ExpiresAt: '%v'`, expiresAt.Time, res.ExpiresAt)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, tn, apiKey.ExpiresAt)
 }
 
 func Test_GetAPIKeyById_ExpiresAtIsNotValid(t *testing.T) {
 	clearMock()
 
 	expiresAt.Valid = false
-	expectedTime := time.Time{}
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_Id,
-		Args:  []interface{}{apiKey.Id},
-
+		Query: GET_APIKEY_BY_Id, Args: []interface{}{apiKey.Id},
 		Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
-		Rows: [][]interface{}{
-			{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt},
-		},
+		Rows:    [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt}},
 	})
 
-	res, err := a.GetAPIKeyById(apiKey.Id)
+	apiKey, err := a.GetAPIKeyById(apiKey.Id)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if !reflect.DeepEqual(res.ExpiresAt, expectedTime) {
-		t.Fatalf(`
-invalid response: 
-expected res.ExpiresAt: '%v' 
-received res.ExpiresAt: '%v'`, expectedTime, res.ExpiresAt)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, time.Time{}, apiKey.ExpiresAt)
 }
 
-func Test_GetAPIKeyById_Success(t *testing.T) {
+func Test_GetAPIKeyByKey_Success(t *testing.T) {
 	clearMock()
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_Id,
-		Args:  []interface{}{apiKey.Id},
+	apiKey.ExpiresAt = time.Time{}
 
+	dbclient.AddMock(dbclient.Mock{
+		Query: GET_APIKEY_BY_KEY, Args: []interface{}{apiKey.Key},
 		Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
-		Rows: [][]interface{}{
-			{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt},
-		},
+		Rows:    [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt}},
 	})
 
-	_, err := a.GetAPIKeyById(apiKey.Id)
+	key, err := a.GetAPIKeyByKey(apiKey.Key)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, &apiKey, key)
 }
 
 func Test_GetAPIKeyByKey_Error(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to get API Key"
+	errMap["Scan"] = errors.New("Scan error")
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_KEY,
-		Args:  []interface{}{apiKey.Key},
+	dbclient.AddMock(dbclient.Mock{Query: GET_APIKEY_BY_KEY, Args: []interface{}{apiKey.Key}, Error: errMap})
 
-		Error: errors.New("test error"),
-	})
+	apiKey, err := a.GetAPIKeyByKey(apiKey.Key)
 
-	_, err := a.GetAPIKeyByKey(apiKey.Key)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, apiKey)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to get API Key", []interface{}{"Scan error"}), err)
 }
 
 func Test_GetAPIKeyByKey_NotFoundError(t *testing.T) {
 	clearMock()
 
-	expectedErr := "API key not found"
+	errMap["Scan"] = sql.ErrNoRows
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_KEY,
-		Args:  []interface{}{apiKey.Key},
+	dbclient.AddMock(dbclient.Mock{Query: GET_APIKEY_BY_KEY, Args: []interface{}{apiKey.Key}, Error: errMap})
 
-		Error: sql.ErrNoRows,
-	})
+	apiKey, err := a.GetAPIKeyByKey(apiKey.Key)
 
-	_, err := a.GetAPIKeyByKey(apiKey.Key)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, apiKey)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "API key not found", []interface{}{sql.ErrNoRows}), err)
 }
 
 func Test_GetAPIKeyByKey_expiresAtIsValid(t *testing.T) {
@@ -1269,306 +1013,156 @@ func Test_GetAPIKeyByKey_expiresAtIsValid(t *testing.T) {
 	expiresAt.Valid = true
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_KEY,
-		Args:  []interface{}{apiKey.Key},
-
+		Query: GET_APIKEY_BY_KEY, Args: []interface{}{apiKey.Key},
 		Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
-		Rows: [][]interface{}{
-			{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt},
-		},
+		Rows:    [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt}},
 	})
 
-	res, err := a.GetAPIKeyByKey(apiKey.Key)
+	apiKey, err := a.GetAPIKeyByKey(apiKey.Key)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if !reflect.DeepEqual(res.ExpiresAt, expiresAt.Time) {
-		t.Fatalf(`
-invalid response: 
-expected res.ExpiresAt: '%v' 
-received res.ExpiresAt: '%v'`, expiresAt.Time, res.ExpiresAt)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, tn, apiKey.ExpiresAt)
 }
 func Test_GetAPIKeyByKey_expiresAtIsNotValid(t *testing.T) {
 	clearMock()
 
 	expiresAt.Valid = false
-	expectedTime := time.Time{}
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_KEY,
-		Args:  []interface{}{apiKey.Key},
-
+		Query: GET_APIKEY_BY_KEY, Args: []interface{}{apiKey.Key},
 		Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
-		Rows: [][]interface{}{
-			{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt},
-		},
+		Rows:    [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt}},
 	})
 
-	res, err := a.GetAPIKeyByKey(apiKey.Key)
+	apiKey, err := a.GetAPIKeyByKey(apiKey.Key)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if !reflect.DeepEqual(res.ExpiresAt, expectedTime) {
-		t.Fatalf(`
-invalid response: 
-expected res.ExpiresAt: '%v' 
-received res.ExpiresAt: '%v'`, expectedTime, res.ExpiresAt)
-	}
-}
-
-func Test_GetAPIKeyByKey_Success(t *testing.T) {
-	clearMock()
-
-	dbclient.AddMock(dbclient.Mock{
-		Query: GET_APIKEY_BY_KEY,
-		Args:  []interface{}{apiKey.Key},
-
-		Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
-		Rows: [][]interface{}{
-			{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, expiresAt},
-		},
-	})
-
-	_, err := a.GetAPIKeyByKey(apiKey.Key)
-
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-}
-
-func Test_AddAccountRole_Error(t *testing.T) {
-	clearMock()
-
-	expectedErr := "failed to add role to account"
-
-	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_ACCOUNT_ROLE,
-		Args:  []interface{}{accountRoles.Id, accountRoles.Name},
-
-		Error: errors.New("test error"),
-	})
-
-	err := a.AddAccountRole(accountRoles.Id, accountRoles.Name)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
-}
-
-func Test_AddAccountRole_DuplicatedRoleError(t *testing.T) {
-	clearMock()
-
-	expectedErr := "this role is already assigned to the account"
-
-	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_ACCOUNT_ROLE,
-		Args:  []interface{}{accountRoles.Id, accountRoles.Name},
-
-		Error: pqError,
-	})
-
-	err := a.AddAccountRole(accountRoles.Id, accountRoles.Name)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, time.Time{}, apiKey.ExpiresAt)
 }
 
 func Test_AddAccountRole_Success(t *testing.T) {
 	clearMock()
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: ADD_ACCOUNT_ROLE,
-		Args:  []interface{}{accountRoles.Id, accountRoles.Name},
-	})
+	dbclient.AddMock(dbclient.Mock{Query: ADD_ACCOUNT_ROLE, Args: []interface{}{role.Id, role.Name}})
 
-	err := a.AddAccountRole(accountRoles.Id, accountRoles.Name)
+	roles, err := a.AddAccountRole(role.Id, role.Name)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, &role, roles)
 }
 
-func Test_DeleteAccountRole_Error(t *testing.T) {
+func Test_AddAccountRole_Error(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to delete role from account"
+	errMap["Exec"] = errors.New("Exec error")
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: DELETE_ACCOUNT_ROLE,
-		Args:  []interface{}{accountRoles.Id, accountRoles.Name},
+	dbclient.AddMock(dbclient.Mock{Query: ADD_ACCOUNT_ROLE, Args: []interface{}{role.Id, role.Name}, Error: errMap})
 
-		Error: pqError,
-	})
+	roles, err := a.AddAccountRole(role.Id, role.Name)
 
-	err := a.DeleteAccountRole(accountRoles.Id, accountRoles.Name)
+	assert.Nil(t, roles)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to add role to account", []interface{}{"Exec error"}), err)
+}
 
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+func Test_AddAccountRole_DuplicatedRoleError(t *testing.T) {
+	clearMock()
+
+	errMap["Exec"] = pqError
+
+	dbclient.AddMock(dbclient.Mock{Query: ADD_ACCOUNT_ROLE, Args: []interface{}{role.Id, role.Name}, Error: errMap})
+
+	roles, err := a.AddAccountRole(role.Id, role.Name)
+
+	assert.Nil(t, roles)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "this role is already assigned to the account", []interface{}{pqError.Detail}), err)
 }
 
 func Test_DeleteAccountRole_Success(t *testing.T) {
 	clearMock()
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: DELETE_ACCOUNT_ROLE,
-		Args:  []interface{}{accountRoles.Id, accountRoles.Name},
-	})
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE, Args: []interface{}{role.Id, role.Name}})
 
-	err := a.DeleteAccountRole(accountRoles.Id, accountRoles.Name)
+	err := a.DeleteAccountRole(role.Id, role.Name)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
 }
 
-func Test_FindRolesByAccount_Error(t *testing.T) {
+func Test_DeleteAccountRole_Error(t *testing.T) {
 	clearMock()
 
-	expectedErr := "failed to find roles"
+	errMap["Exec"] = errors.New("Exec error")
 
-	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ROLES_BY_ACCOUNT_Id,
-		Args:  []interface{}{accountRoles.Id},
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE, Args: []interface{}{role.Id, role.Name}, Error: errMap})
 
-		Error: errors.New("test error"),
-	})
+	err := a.DeleteAccountRole(role.Id, role.Name)
 
-	_, err := a.FindRolesByAccount(accountRoles.Id)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
-}
-
-func Test_FindRolesByAccount_ScanError(t *testing.T) {
-	// TODO: make sure that if there are no rows and records, record not foud error will be send back
-	clearMock()
-
-	expectedErr := "failed to find roles"
-
-	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ROLES_BY_ACCOUNT_Id,
-		Args:  []interface{}{accountRoles.Id},
-
-		Columns: []string{"role_name"},
-		Rows: [][]interface{}{
-			{accountRoles.Name},
-		},
-
-		ScanErr: errors.New("scan error"),
-	})
-
-	_, err := a.FindRolesByAccount(accountRoles.Id)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
-}
-
-func Test_FindRolesByAccount_CheckRoles(t *testing.T) {
-	clearMock()
-
-	acc.Id = uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3")
-	roles = append(roles, "admin", "tester")
-	expectedRoles := []model.AccountRoles{
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"},
-		{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "tester"},
-	}
-
-	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ROLES_BY_ACCOUNT_Id,
-		Args:  []interface{}{accountRoles.Id},
-
-		Columns: []string{"role_name"},
-		Rows: [][]interface{}{
-			{accountRoles.Name}, {"tester"},
-		},
-	})
-
-	res, err := a.FindRolesByAccount(accountRoles.Id)
-
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
-	if !reflect.DeepEqual(res, expectedRoles) {
-		t.Fatalf(`
-invalid response: 
-expected response: '%v' 
-received response: '%v'`, expectedRoles, res)
-	}
-}
-
-func Test_FindRolesByAccount_RowsError(t *testing.T) {
-	clearMock()
-
-	expectedErr := "failed to find roles"
-
-	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ROLES_BY_ACCOUNT_Id,
-		Args:  []interface{}{accountRoles.Id},
-
-		RowsErr: errors.New("rows error"),
-	})
-
-	_, err := a.FindRolesByAccount(accountRoles.Id)
-
-	if err == nil {
-		t.Fatal("expected error but received nil")
-	}
-	if err.Error() != errors.New(expectedErr).Error() {
-		t.Fatalf(`
-invalid error response: 
-expected: '%v' 
-received: '%v'`, expectedErr, err)
-	}
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{"Exec error"}), err)
 }
 
 func Test_FindRolesByAccount_Success(t *testing.T) {
 	clearMock()
 
 	dbclient.AddMock(dbclient.Mock{
-		Query: FIND_ROLES_BY_ACCOUNT_Id,
-		Args:  []interface{}{accountRoles.Id},
+		Query: FIND_ROLES_BY_ACCOUNT_Id, Args: []interface{}{role.Id}, Columns: []string{"name"}, Rows: [][]interface{}{{"admin"}},
 	})
 
-	_, err := a.FindRolesByAccount(accountRoles.Id)
+	roles, err := a.FindRolesByAccount(role.Id)
 
-	if err != nil {
-		t.Fatal("unexpected error:", err)
-	}
+	assert.Nil(t, err)
+	assert.Equal(t, role, roles[0])
+}
+
+func Test_FindRolesByAccount_Error(t *testing.T) {
+	clearMock()
+
+	errMap["Query"] = errors.New("Query error")
+
+	dbclient.AddMock(dbclient.Mock{Query: FIND_ROLES_BY_ACCOUNT_Id, Args: []interface{}{role.Id}, Error: errMap})
+
+	roles, err := a.FindRolesByAccount(role.Id)
+
+	assert.Nil(t, roles)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{"Query error"}), err)
+}
+
+func Test_FindRolesByAccount_ScanError(t *testing.T) {
+	clearMock()
+
+	errMap["Scan"] = errors.New("Scan error")
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: FIND_ROLES_BY_ACCOUNT_Id, Args: []interface{}{role.Id},
+		Columns: []string{"role_name"}, Rows: [][]interface{}{{"admin"}},
+		Error: errMap,
+	})
+
+	roles, err := a.FindRolesByAccount(role.Id)
+
+	assert.Nil(t, roles)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{"Scan error"}), err)
+}
+
+func Test_FindRolesByAccount_CheckRoles(t *testing.T) {
+	clearMock()
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: FIND_ROLES_BY_ACCOUNT_Id, Args: []interface{}{role.Id}, Columns: []string{"name"}, Rows: [][]interface{}{{"admin"}}})
+
+	roles, err := a.FindRolesByAccount(role.Id)
+
+	assert.Nil(t, err)
+	assert.Equal(t, role, roles[0])
+}
+
+func Test_FindRolesByAccount_RowsError(t *testing.T) {
+	clearMock()
+
+	errMap["Rows"] = errors.New("Rows error")
+
+	dbclient.AddMock(dbclient.Mock{Query: FIND_ROLES_BY_ACCOUNT_Id, Args: []interface{}{role.Id}, Error: errMap})
+
+	roles, err := a.FindRolesByAccount(role.Id)
+
+	assert.Nil(t, roles)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{"Rows error"}), err)
 }

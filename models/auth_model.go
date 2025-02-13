@@ -1,29 +1,30 @@
 package model
 
 import (
-	"errors"
+	"net/http"
 	"regexp"
 	"time"
 
+	"github.com/demkowo/utils/resp"
 	"github.com/golang-jwt/jwt"
 	"github.com/google/uuid"
 )
 
 type Account struct {
-	Id       uuid.UUID      `json:"id"`
-	Email    string         `json:"email"`
-	Password string         `json:"password"`
-	Nickname string         `json:"nickname"`
-	Roles    []AccountRoles `json:"roles"`
-	APIKeys  []APIKey       `json:"api_keys"`
-	Created  time.Time      `json:"created"`
-	Updated  time.Time      `json:"updated"`
-	Blocked  time.Time      `json:"blocked"`
-	Deleted  bool           `json:"deleted"`
+	Id       uuid.UUID     `json:"id"`
+	Email    string        `json:"email"`
+	Password string        `json:"password"`
+	Nickname string        `json:"nickname"`
+	Roles    []AccountRole `json:"roles"`
+	APIKeys  []APIKey      `json:"api_keys"`
+	Created  time.Time     `json:"created"`
+	Updated  time.Time     `json:"updated"`
+	Blocked  time.Time     `json:"blocked"`
+	Deleted  bool          `json:"deleted"`
 	jwt.StandardClaims
 }
 
-type AccountRoles struct {
+type AccountRole struct {
 	Id   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
 }
@@ -36,21 +37,21 @@ type APIKey struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-func (a *Account) Validate() error {
+func (a *Account) Validate() *resp.Err {
 	if a.Email == "" || a.Password == "" || a.Nickname == "" {
-		return errors.New("email, password and nickname can't be empty")
+		return resp.Error(http.StatusInternalServerError, "mandatory field is empty", []interface{}{"email, password and nickname can't be empty"})
 	}
 
 	emailRegex := regexp.MustCompile(`^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$`)
 	if !emailRegex.MatchString(a.Email) {
-		return errors.New("invalid email address")
+		return resp.Error(http.StatusInternalServerError, "invalid email address", []interface{}{})
 	}
 
 	if len(a.Password) < 8 ||
 		!containsCapitalLetter(a.Password) ||
 		!containsSpecialCharacter(a.Password) ||
 		!containsDigit(a.Password) {
-		return errors.New("password must contain at least 8 characters, 1 capital letter, 1 special character, and 1 digit")
+		return resp.Error(http.StatusInternalServerError, "invalid password", []interface{}{"password must contain at least 8 characters, 1 capital letter, 1 special character, and 1 digit"})
 	}
 	return nil
 }
