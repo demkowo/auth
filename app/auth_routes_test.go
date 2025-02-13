@@ -73,4 +73,10 @@ func TestRoutes(t *testing.T) {
 			assert.JSONEq(t, tt.response, w.Body.String())
 		})
 	}
+
+	if assert.Equal(t, true, registered) {
+		assert.NotPanics(t, func() {
+			addAccountRoutes(router, mockHandler)
+		})
+	}
 }

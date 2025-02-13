@@ -13,6 +13,8 @@ This repository provides a basic authentication and account management service b
 5. [Potential Improvements](#potential-improvements)  
 6. [Getting Started](#getting-started)  
 7. [Project Structure](#project-structure)
+8. [Current test coverage (97.8%)](#current-test-coverage)
+
 
 ---
 
@@ -240,24 +242,22 @@ curl -X POST http://localhost:5000/api/v1/auth/roles/add/<ACCOUNT_ID> \
 
 ## Potential Improvements
 
-### Enhanced Security
-
+**Enhanced Security**
 - Rate limiting to prevent brute force attacks on login.
 - Further improvements on password hashing (adjust bcrypt cost, add pepper, tc.).
 - Add multi-factor authentication.
 
-### Refresh Token Storage
+**Refresh Token Storage**
 - Implement a refresh token store with revocation capabilities for better control over token usage.
 
-### Audit Logging
+**Audit Logging**
 - Log all changes made to user accounts, password updates, role changes, etc.
 
-### Performance and Monitoring
+**Performance and Monitoring**
 - Ad metrics (e.g., Prometheus) and health checks for better observability.
 - Use caching layers for frequently accessed data, if needed.
 
-### Code Organization & Testing
-- Add unit tests and integration tests to ensure reliability.
+**Code Organization & Testing**
 - Add testing tools for future and already existing test cases.
 - Implement a CI/CD pipeline with code coverage and static analysis checks.
 
@@ -313,3 +313,16 @@ By default, the service listens on port :5000.
 │   └── auth_service.go    # Core business logic (validations, hashing, token generation)
 └── main.go                # Typically references app.Start() to launch the server
 ```
+
+## Current test coverage
+**total:** 97.8%
+
+| Package | Statements | Functions |
+|---|---|---|
+|`app`| 63.9%| 50% |
+|`config`| 100.0% | 100.0% |
+|`handlers`| 100.0% | 100.0 % |
+|`models`| 100.0% | 100.0% |
+|`postgres`| 100.0% | 100.0% |
+|`services`| 100.0% | 100.0% |
+|**total**| 97.8% | 97,8% |
