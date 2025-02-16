@@ -11,16 +11,17 @@ import (
 )
 
 type Account struct {
-	Id       uuid.UUID     `json:"id"`
-	Email    string        `json:"email"`
-	Password string        `json:"password"`
-	Nickname string        `json:"nickname"`
-	Roles    []AccountRole `json:"roles"`
-	APIKeys  []APIKey      `json:"api_keys"`
-	Created  time.Time     `json:"created"`
-	Updated  time.Time     `json:"updated"`
-	Blocked  time.Time     `json:"blocked"`
-	Deleted  bool          `json:"deleted"`
+	Id        uuid.UUID     `json:"id"`
+	Email     string        `json:"email"`
+	Password  string        `json:"password"`
+	Nickname  string        `json:"nickname"`
+	Roles     []AccountRole `json:"roles"`
+	APIKeys   []APIKey      `json:"api_keys"`
+	Created   time.Time     `json:"created"`
+	Updated   time.Time     `json:"updated"`
+	Blocked   time.Time     `json:"blocked"`
+	Deleted   bool          `json:"deleted"`
+	Providers []string      `json:"providers"`
 	jwt.StandardClaims
 }
 
@@ -35,6 +36,12 @@ type APIKey struct {
 	AccountId uuid.UUID `json:"account_id"`
 	CreatedAt time.Time `json:"created_at"`
 	ExpiresAt time.Time `json:"expires_at"`
+}
+
+type OAuth2Token struct {
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token,omitempty"`
+	Expiry       time.Time `json:"expiry"`
 }
 
 func (a *Account) Validate() *resp.Err {

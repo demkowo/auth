@@ -3,7 +3,7 @@ module github.com/demkowo/auth
 go 1.24.0
 
 require (
-	github.com/demkowo/dbclient v0.0.0-20250210140252-01e93d6edc04
+	github.com/demkowo/dbclient v0.0.0-20250213164255-c2d2e5d5295b
 	//github.com/demkowo/utils v0.0.0-20250212135937-7ad617747049
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
@@ -13,7 +13,10 @@ require (
 	golang.org/x/crypto v0.33.0
 )
 
-require github.com/demkowo/utils v0.0.0-20250212193647-8097f7b7b0fd
+require (
+	github.com/demkowo/utils v0.0.0-20250216224616-887732b44857
+	golang.org/x/oauth2 v0.26.0
+)
 
 require (
 	github.com/bytedance/sonic v1.11.6 // indirect

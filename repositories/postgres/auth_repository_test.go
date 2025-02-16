@@ -61,13 +61,13 @@ var (
 		Name: "admin",
 	}
 
-	tableExists             = sql.NullString{String: "to_regclass", Valid: true}
-	accountTableExist       = dbclient.Mock{Query: ACCOUNT_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
-	createAccountTable      = dbclient.Mock{Query: CREATE_ACCOUNT_TABLE, Args: []interface{}{}, Columns: []string{"id", "nickname", "email", "password", "created", "updated", "blocked", "deleted"}, Rows: [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, blocked, acc.Deleted}}}
-	accountRolesTableExist  = dbclient.Mock{Query: ACCOUNT_ROLES_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
-	createAccountRolesTable = dbclient.Mock{Query: CREATE_ACCOUNT_ROLES_TABLE, Args: []interface{}{}, Columns: []string{"id", "name"}, Rows: [][]interface{}{{role.Id, role.Name}}}
-	apiKeysTableExist       = dbclient.Mock{Query: APIKEY_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
-	createApiKeyTable       = dbclient.Mock{Query: CREATE_APIKEY_TABLE, Args: []interface{}{}, Columns: []string{"id", "key", "account_id", "created_at", "expires_at"}, Rows: [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}}}
+	tableExists                 = sql.NullString{String: "to_regclass", Valid: true}
+	accountTableExistMock       = dbclient.Mock{Query: ACCOUNT_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
+	createAccountTableMock      = dbclient.Mock{Query: CREATE_ACCOUNT_TABLE, Args: []interface{}{}, Columns: []string{"id", "nickname", "email", "password", "created", "updated", "blocked", "deleted"}, Rows: [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, blocked, acc.Deleted}}}
+	accountRolesTableExistMock  = dbclient.Mock{Query: ACCOUNT_ROLES_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
+	createAccountRolesTableMock = dbclient.Mock{Query: CREATE_ACCOUNT_ROLES_TABLE, Args: []interface{}{}, Columns: []string{"id", "name"}, Rows: [][]interface{}{{role.Id, role.Name}}}
+	apiKeysTableExistMock       = dbclient.Mock{Query: APIKEY_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
+	createApiKeyTableMock       = dbclient.Mock{Query: CREATE_APIKEY_TABLE, Args: []interface{}{}, Columns: []string{"id", "key", "account_id", "created_at", "expires_at"}, Rows: [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}}}
 )
 
 func TestMain(m *testing.M) {
@@ -107,12 +107,12 @@ func Test_NewAccount_Success(t *testing.T) {
 }
 
 func Test_CreateTables_Success(t *testing.T) {
-	dbclient.AddMock(accountTableExist)
-	dbclient.AddMock(createAccountTable)
-	dbclient.AddMock(accountRolesTableExist)
-	dbclient.AddMock(createAccountRolesTable)
-	dbclient.AddMock(apiKeysTableExist)
-	dbclient.AddMock(createApiKeyTable)
+	dbclient.AddMock(accountTableExistMock)
+	dbclient.AddMock(createAccountTableMock)
+	dbclient.AddMock(accountRolesTableExistMock)
+	dbclient.AddMock(createAccountRolesTableMock)
+	dbclient.AddMock(apiKeysTableExistMock)
+	dbclient.AddMock(createApiKeyTableMock)
 
 	err := a.CreateTables()
 
@@ -130,7 +130,7 @@ func Test_CreateTables_ACCOUNT_TABLE_EXIST_Error(t *testing.T) {
 }
 
 func Test_CreateTables_CREATE_ACCOUNT_TABLE_Error(t *testing.T) {
-	dbclient.AddMock(accountTableExist)
+	dbclient.AddMock(accountTableExistMock)
 	dbclient.AddMock(dbclient.Mock{
 		Query: CREATE_ACCOUNT_TABLE, Args: []interface{}{"invalidArg"},
 		Columns: []string{"id", "nickname", "email", "password", "created", "updated", "blocked", "deleted"},
@@ -148,11 +148,11 @@ func Test_CreateTables_CREATE_ACCOUNT_TABLE_AlreadyExists(t *testing.T) {
 	dbclient.AddMock(dbclient.Mock{
 		Query: ACCOUNT_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{tableExists}},
 	})
-	dbclient.AddMock(createAccountTable)
-	dbclient.AddMock(accountRolesTableExist)
-	dbclient.AddMock(createAccountRolesTable)
-	dbclient.AddMock(apiKeysTableExist)
-	dbclient.AddMock(createApiKeyTable)
+	dbclient.AddMock(createAccountTableMock)
+	dbclient.AddMock(accountRolesTableExistMock)
+	dbclient.AddMock(createAccountRolesTableMock)
+	dbclient.AddMock(apiKeysTableExistMock)
+	dbclient.AddMock(createApiKeyTableMock)
 
 	err := a.CreateTables()
 
@@ -160,8 +160,8 @@ func Test_CreateTables_CREATE_ACCOUNT_TABLE_AlreadyExists(t *testing.T) {
 }
 
 func Test_CreateTables_ACCOUNT_ROLES_TABLE_EXIST_Error(t *testing.T) {
-	dbclient.AddMock(accountTableExist)
-	dbclient.AddMock(createAccountTable)
+	dbclient.AddMock(accountTableExistMock)
+	dbclient.AddMock(createAccountTableMock)
 	dbclient.AddMock(dbclient.Mock{
 		Query: ACCOUNT_ROLES_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{"invalidDataType"}},
 	})
@@ -172,9 +172,9 @@ func Test_CreateTables_ACCOUNT_ROLES_TABLE_EXIST_Error(t *testing.T) {
 }
 
 func Test_CreateTables_CREATE_ACCOUNT_ROLES_TABLE_Error(t *testing.T) {
-	dbclient.AddMock(accountTableExist)
-	dbclient.AddMock(createAccountTable)
-	dbclient.AddMock(accountRolesTableExist)
+	dbclient.AddMock(accountTableExistMock)
+	dbclient.AddMock(createAccountTableMock)
+	dbclient.AddMock(accountRolesTableExistMock)
 	dbclient.AddMock(dbclient.Mock{
 		Query: CREATE_ACCOUNT_ROLES_TABLE, Args: []interface{}{"invalidArg"}, Columns: []string{"id", "name"}, Rows: [][]interface{}{{role.Id, role.Name}},
 	})
@@ -187,14 +187,14 @@ func Test_CreateTables_CREATE_ACCOUNT_ROLES_TABLE_Error(t *testing.T) {
 }
 
 func Test_CreateTables_CREATE_ACCOUNT_ROLES_TABLE_AlreadyExists(t *testing.T) {
-	dbclient.AddMock(accountTableExist)
-	dbclient.AddMock(createAccountTable)
+	dbclient.AddMock(accountTableExistMock)
+	dbclient.AddMock(createAccountTableMock)
 	dbclient.AddMock(dbclient.Mock{
 		Query: ACCOUNT_ROLES_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{tableExists}},
 	})
-	dbclient.AddMock(createAccountRolesTable)
-	dbclient.AddMock(apiKeysTableExist)
-	dbclient.AddMock(createApiKeyTable)
+	dbclient.AddMock(createAccountRolesTableMock)
+	dbclient.AddMock(apiKeysTableExistMock)
+	dbclient.AddMock(createApiKeyTableMock)
 
 	err := a.CreateTables()
 
@@ -202,10 +202,10 @@ func Test_CreateTables_CREATE_ACCOUNT_ROLES_TABLE_AlreadyExists(t *testing.T) {
 }
 
 func Test_CreateTables_APIKEY_TABLE_EXIST_Error(t *testing.T) {
-	dbclient.AddMock(accountTableExist)
-	dbclient.AddMock(createAccountTable)
-	dbclient.AddMock(accountRolesTableExist)
-	dbclient.AddMock(createAccountRolesTable)
+	dbclient.AddMock(accountTableExistMock)
+	dbclient.AddMock(createAccountTableMock)
+	dbclient.AddMock(accountRolesTableExistMock)
+	dbclient.AddMock(createAccountRolesTableMock)
 	dbclient.AddMock(dbclient.Mock{
 		Query: APIKEY_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{"invalidDataType"}},
 	})
@@ -216,11 +216,11 @@ func Test_CreateTables_APIKEY_TABLE_EXIST_Error(t *testing.T) {
 }
 
 func Test_CreateTables_CREATE_APIKEY_TABLE_Error(t *testing.T) {
-	dbclient.AddMock(accountTableExist)
-	dbclient.AddMock(createAccountTable)
-	dbclient.AddMock(accountRolesTableExist)
-	dbclient.AddMock(createAccountRolesTable)
-	dbclient.AddMock(apiKeysTableExist)
+	dbclient.AddMock(accountTableExistMock)
+	dbclient.AddMock(createAccountTableMock)
+	dbclient.AddMock(accountRolesTableExistMock)
+	dbclient.AddMock(createAccountRolesTableMock)
+	dbclient.AddMock(apiKeysTableExistMock)
 	dbclient.AddMock(dbclient.Mock{
 		Query: CREATE_APIKEY_TABLE, Args: []interface{}{"invalidArg"}, Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
 		Rows: [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}},
@@ -234,14 +234,14 @@ func Test_CreateTables_CREATE_APIKEY_TABLE_Error(t *testing.T) {
 }
 
 func Test_CreateTables_CREATE_APIKEY_TABLE_AlreadyExists(t *testing.T) {
-	dbclient.AddMock(accountTableExist)
-	dbclient.AddMock(createAccountTable)
-	dbclient.AddMock(accountRolesTableExist)
-	dbclient.AddMock(createAccountRolesTable)
+	dbclient.AddMock(accountTableExistMock)
+	dbclient.AddMock(createAccountTableMock)
+	dbclient.AddMock(accountRolesTableExistMock)
+	dbclient.AddMock(createAccountRolesTableMock)
 	dbclient.AddMock(dbclient.Mock{
 		Query: APIKEY_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{tableExists}},
 	})
-	dbclient.AddMock(createApiKeyTable)
+	dbclient.AddMock(createApiKeyTableMock)
 
 	err := a.CreateTables()
 
@@ -866,7 +866,7 @@ func Test_DeleteAPIKey_Success(t *testing.T) {
 
 	dbclient.AddMock(dbclient.Mock{Query: DELETE_APIKEY, Args: []interface{}{apiKey.Key}})
 
-	err := a.DeleteAPIKey(apiKey.Key)
+	err := a.DeleteAPIKey(apiKey.Id)
 
 	assert.Nil(t, err)
 }
@@ -878,7 +878,7 @@ func Test_DeleteAPIKey_Error(t *testing.T) {
 
 	dbclient.AddMock(dbclient.Mock{Query: DELETE_APIKEY, Args: []interface{}{apiKey.Key}, Error: errMap})
 
-	err := a.DeleteAPIKey(apiKey.Key)
+	err := a.DeleteAPIKey(apiKey.Id)
 
 	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to delete API key", []interface{}{"Exec error"}), err)
 }
@@ -1077,24 +1077,46 @@ func Test_AddAccountRole_DuplicatedRoleError(t *testing.T) {
 	assert.Equal(t, resp.Error(http.StatusInternalServerError, "this role is already assigned to the account", []interface{}{pqError.Detail}), err)
 }
 
-func Test_DeleteAccountRole_Success(t *testing.T) {
+func Test_DeleteAccountRoleById_Success(t *testing.T) {
 	clearMock()
 
-	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE, Args: []interface{}{role.Id, role.Name}})
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE_BY_ID, Args: []interface{}{role.Id, role.Name}})
 
-	err := a.DeleteAccountRole(role.Id, role.Name)
+	err := a.DeleteAccountRoleById(role.Id)
 
 	assert.Nil(t, err)
 }
 
-func Test_DeleteAccountRole_Error(t *testing.T) {
+func Test_DeleteAccountRoleById_Error(t *testing.T) {
 	clearMock()
 
 	errMap["Exec"] = errors.New("Exec error")
 
-	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE, Args: []interface{}{role.Id, role.Name}, Error: errMap})
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE_BY_ID, Args: []interface{}{role.Id}, Error: errMap})
 
-	err := a.DeleteAccountRole(role.Id, role.Name)
+	err := a.DeleteAccountRoleById(role.Id)
+
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{"Exec error"}), err)
+}
+
+func Test_DeleteAccountRoleByName_Success(t *testing.T) {
+	clearMock()
+
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE_BY_NAME, Args: []interface{}{role.Id, role.Name}})
+
+	err := a.DeleteAccountRoleByName(role.Name)
+
+	assert.Nil(t, err)
+}
+
+func Test_DeleteAccountRoleByName_Error(t *testing.T) {
+	clearMock()
+
+	errMap["Exec"] = errors.New("Exec error")
+
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE_BY_NAME, Args: []interface{}{role.Name}, Error: errMap})
+
+	err := a.DeleteAccountRoleByName(role.Name)
 
 	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{"Exec error"}), err)
 }

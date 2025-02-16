@@ -3,7 +3,6 @@ package postgres
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -112,13 +111,18 @@ const (
 	`
 
 	ADD_APIKEY        = "INSERT INTO public.api_keys (id, key, account_id, created_at, expires_at) VALUES ($1, $2, $3, $4, $5);"
-	DELETE_APIKEY     = "DELETE FROM public.api_keys WHERE key = $1;"
+	DELETE_APIKEY     = "DELETE FROM public.api_keys WHERE id = $1;"
 	GET_APIKEY_BY_Id  = "SELECT id, key, account_id, created_at, expires_at FROM public.api_keys WHERE id = $1;"
-	GET_APIKEY_BY_KEY = "SELECT id, key, account_id, created_at, expires_at FROM public.api_keys WHERE key = $1;"
+	GET_APIKEY_BY_KEY = "SELECT id, key, account_id, created_at, expires_at FROM public.api_keys WHERE id = $1;"
 
-	ADD_ACCOUNT_ROLE         = "INSERT INTO public.account_roles (id, name) VALUES ($1, $2);"
-	DELETE_ACCOUNT_ROLE      = "DELETE FROM public.account_roles WHERE id = $1 AND name = $2;"
-	FIND_ROLES_BY_ACCOUNT_Id = "SELECT name FROM public.account_roles WHERE id = $1;"
+	ADD_ACCOUNT_ROLE            = "INSERT INTO public.account_roles (id, name) VALUES ($1, $2);"
+	DELETE_ACCOUNT_ROLE_BY_ID   = "DELETE FROM public.account_roles WHERE id = $1;"
+	DELETE_ACCOUNT_ROLE_BY_NAME = "DELETE FROM public.account_roles WHERE name = $1;"
+	FIND_ROLES_BY_ACCOUNT_Id    = "SELECT name FROM public.account_roles WHERE id = $1;"
+
+	ADD_OAUTH2_TOKEN    = `INSERT INTO public.oauth2_tokens (account_id, access_token, refresh_token, expiry) VALUES ($1, $2, $3, $4)`
+	GET_OAUTH2_TOKEN    = `SELECT access_token, refresh_token, expiry FROM public.oauth2_tokens WHERE account_id = $1`
+	DELETE_OAUTH2_TOKEN = `DELETE FROM public.oauth2_tokens WHERE account_id = $1`
 )
 
 type Account interface {
@@ -133,13 +137,18 @@ type Account interface {
 	UpdatePassword(uuid.UUID, string) *resp.Err
 
 	AddAPIKey(*model.APIKey) (*model.APIKey, *resp.Err)
-	DeleteAPIKey(string) *resp.Err
+	DeleteAPIKey(uuid.UUID) *resp.Err
 	GetAPIKeyById(uuid.UUID) (*model.APIKey, *resp.Err)
 	GetAPIKeyByKey(string) (*model.APIKey, *resp.Err)
 
 	AddAccountRole(uuid.UUID, string) (*model.AccountRole, *resp.Err)
-	DeleteAccountRole(uuid.UUID, string) *resp.Err
+	DeleteAccountRoleById(uuid.UUID) *resp.Err
+	DeleteAccountRoleByName(string) *resp.Err
 	FindRolesByAccount(uuid.UUID) ([]model.AccountRole, *resp.Err)
+
+	AddOAuth2Token(accountId string, token *model.OAuth2Token) *resp.Err
+	GetOAuth2TokenByaccountId(accountId string) (*model.OAuth2Token, *resp.Err)
+	DeleteOAuth2Token(accountId string) *resp.Err
 }
 
 type account struct {
@@ -272,7 +281,7 @@ func (r *account) GetByEmail(email string) (*model.Account, *resp.Err) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Printf("account with email %s not found", email)
-			return nil, resp.Error(http.StatusInternalServerError, fmt.Sprintf("account with email %s not found", email), []interface{}{sql.ErrNoRows})
+			return nil, resp.Error(http.StatusInternalServerError, "account not found", []interface{}{sql.ErrNoRows})
 		}
 		log.Printf("failed to scan rows GET_ACCOUNT_BY_EMAIL: %v", err)
 		return nil, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{err.Error()})
@@ -412,8 +421,8 @@ func (r *account) AddAPIKey(apiKey *model.APIKey) (*model.APIKey, *resp.Err) {
 	return apiKey, nil
 }
 
-func (r *account) DeleteAPIKey(key string) *resp.Err {
-	_, err := r.db.Exec(DELETE_APIKEY, key)
+func (r *account) DeleteAPIKey(id uuid.UUID) *resp.Err {
+	_, err := r.db.Exec(DELETE_APIKEY, id)
 	if err != nil {
 		log.Printf("failed to execute db.Exec DELETE_APIKEY: %v", err)
 		return resp.Error(http.StatusInternalServerError, "failed to delete API key", []interface{}{err.Error()})
@@ -501,8 +510,17 @@ func (r *account) AddAccountRole(accountId uuid.UUID, role string) (*model.Accou
 	return &res, nil
 }
 
-func (r *account) DeleteAccountRole(accountId uuid.UUID, role string) *resp.Err {
-	_, err := r.db.Exec(DELETE_ACCOUNT_ROLE, accountId, role)
+func (r *account) DeleteAccountRoleById(accountId uuid.UUID) *resp.Err {
+	_, err := r.db.Exec(DELETE_ACCOUNT_ROLE_BY_ID, accountId)
+	if err != nil {
+		log.Printf("failed to execute DELETE_ACCOUNT_ROLE: %v", err)
+		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{err.Error()})
+	}
+	return nil
+}
+
+func (r *account) DeleteAccountRoleByName(role string) *resp.Err {
+	_, err := r.db.Exec(DELETE_ACCOUNT_ROLE_BY_NAME, role)
 	if err != nil {
 		log.Printf("failed to execute DELETE_ACCOUNT_ROLE: %v", err)
 		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{err.Error()})
@@ -535,4 +553,36 @@ func (r *account) FindRolesByAccount(accountId uuid.UUID) ([]model.AccountRole, 
 	}
 
 	return roles, nil
+}
+
+func (r *account) AddOAuth2Token(accountId string, token *model.OAuth2Token) *resp.Err {
+	_, err := r.db.Exec(ADD_OAUTH2_TOKEN, accountId, token.AccessToken, token.RefreshToken, token.Expiry)
+	if err != nil {
+		log.Printf("failed to add OAuth2 token: %v", err)
+		return resp.Error(http.StatusInternalServerError, "failed to add OAuth2 token", []interface{}{err.Error()})
+	}
+	return nil
+}
+
+func (r *account) GetOAuth2TokenByaccountId(accountId string) (*model.OAuth2Token, *resp.Err) {
+	row := r.db.QueryRow(GET_OAUTH2_TOKEN, accountId)
+	var token model.OAuth2Token
+	err := row.Scan(&token.AccessToken, &token.RefreshToken, &token.Expiry)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, resp.Error(http.StatusNotFound, "OAuth2 token not found", []interface{}{err.Error()})
+		}
+		log.Printf("failed to get OAuth2 token: %v", err)
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get OAuth2 token", []interface{}{err.Error()})
+	}
+	return &token, nil
+}
+
+func (r *account) DeleteOAuth2Token(accountId string) *resp.Err {
+	_, err := r.db.Exec(DELETE_OAUTH2_TOKEN, accountId)
+	if err != nil {
+		log.Printf("failed to delete OAuth2 token: %v", err)
+		return resp.Error(http.StatusInternalServerError, "failed to delete OAuth2 token", []interface{}{err.Error()})
+	}
+	return nil
 }

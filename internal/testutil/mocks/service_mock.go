@@ -1,4 +1,4 @@
-package handler
+package mocks
 
 import (
 	"errors"
@@ -9,6 +9,7 @@ import (
 	model "github.com/demkowo/auth/models"
 	"github.com/demkowo/utils/resp"
 	"github.com/google/uuid"
+	"golang.org/x/oauth2"
 )
 
 var (
@@ -16,10 +17,10 @@ var (
 )
 
 type serviceMock struct {
-	mock Mock
+	mock Service
 }
 
-type Mock struct {
+type Service struct {
 	Error        map[string]error
 	Accounts     []*model.Account
 	Account      *model.Account
@@ -27,13 +28,15 @@ type Mock struct {
 	AccountRoles []model.AccountRole
 	Roles        *model.AccountRole
 	Token        string
+	OAuth2Token  *oauth2.Token
+	OAuth2Config *oauth2.Config
 }
 
 func NewServiceMock() *serviceMock {
 	return sm
 }
 
-func (r *serviceMock) AddMock(mock Mock) {
+func (r *serviceMock) AddMock(mock Service) {
 	r.mock = mock
 }
 
@@ -144,7 +147,7 @@ func (s *serviceMock) AuthenticateByAPIKey(apiKey string) (*model.Account, *resp
 	return s.mock.Account, nil
 }
 
-func (s *serviceMock) DeleteAPIKey(apiKey string) *resp.Err {
+func (s *serviceMock) DeleteAPIKey(id uuid.UUID) *resp.Err {
 	if s.mock.Error["DeleteAPIKey"] != nil {
 		return resp.Error(http.StatusInternalServerError, "failed to delete API key", []interface{}{s.mock.Error["DeleteAPIKey"].Error()})
 	}
@@ -159,9 +162,16 @@ func (s *serviceMock) AddAccountRole(accountId uuid.UUID, role string) (*model.A
 	return s.mock.Roles, nil
 }
 
-func (s *serviceMock) DeleteAccountRole(accountId uuid.UUID, role string) *resp.Err {
-	if s.mock.Error["DeleteAccountRole"] != nil {
-		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{s.mock.Error["DeleteAccountRole"].Error()})
+func (s *serviceMock) DeleteAccountRoleById(accountId uuid.UUID) *resp.Err {
+	if s.mock.Error["DeleteAccountRoleById"] != nil {
+		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{s.mock.Error["DeleteAccountRoleById"].Error()})
+	}
+	return nil
+}
+
+func (s *serviceMock) DeleteAccountRoleByName(role string) *resp.Err {
+	if s.mock.Error["DeleteAccountRoleByName"] != nil {
+		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{s.mock.Error["DeleteAccountRoleByName"].Error()})
 	}
 	return nil
 }
@@ -180,3 +190,53 @@ func (s *serviceMock) UpdateRoles(roles map[string]interface{}) *resp.Err {
 	}
 	return nil
 }
+
+func (s *serviceMock) ExchangeCodeForToken(provider string, code string) (*oauth2.Token, *resp.Err) {
+	if s.mock.Error["ExchangeCodeForToken"] != nil {
+		return nil, resp.Error(http.StatusInternalServerError, "failed to exchange code for token", []interface{}{s.mock.Error["ExchangeCodeForToken"].Error()})
+	}
+	return s.mock.OAuth2Token, nil
+}
+func (s *serviceMock) GetAccountByID(id string) (*model.Account, *resp.Err) {
+	if s.mock.Error["GetAccountByID"] != nil {
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get account by id", []interface{}{s.mock.Error["GetAccountByID"].Error()})
+	}
+	return s.mock.Account, nil
+}
+func (s *serviceMock) GetAccountInfo(provider string, token *oauth2.Token) (*model.Account, *resp.Err) {
+	if s.mock.Error["GetAccountInfo"] != nil {
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get account info", []interface{}{s.mock.Error["GetAccountInfo"].Error()})
+	}
+	return s.mock.Account, nil
+}
+func (s *serviceMock) GetOAuthConfig(provider string) (*oauth2.Config, *resp.Err) {
+	if s.mock.Error["GetOAuthConfig"] != nil {
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get OAuth2 config", []interface{}{s.mock.Error["GetOAuthConfig"].Error()})
+	}
+
+	config := &oauth2.Config{
+		ClientID:     "mock-client-id",
+		ClientSecret: "mock-client-secret",
+		RedirectURL:  "http://localhost:8080/callback",
+		Scopes:       []string{"profile", "email"},
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  "https://mockprovider.com/auth",
+			TokenURL: "https://mockprovider.com/token",
+		},
+	}
+
+	return config, nil
+}
+func (s *serviceMock) Logout(accountId string) *resp.Err {
+	if s.mock.Error["Logout"] != nil {
+		return resp.Error(http.StatusInternalServerError, "failed to logout", []interface{}{s.mock.Error["Logout"].Error()})
+	}
+	return nil
+}
+func (s *serviceMock) StoreAccount(account *model.Account) *resp.Err {
+	if s.mock.Error["StoreAccount"] != nil {
+		return resp.Error(http.StatusInternalServerError, "failed to store account", []interface{}{s.mock.Error["StoreAccount"].Error()})
+	}
+	return nil
+}
+func (s *serviceMock) UpdateLastLogin(accountId string) {}

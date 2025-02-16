@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/demkowo/auth/config"
 	handler "github.com/demkowo/auth/handlers"
 	"github.com/demkowo/auth/repositories/postgres"
 	service "github.com/demkowo/auth/services"
@@ -12,13 +13,10 @@ import (
 	_ "github.com/lib/pq"
 )
 
-const (
-	portNumber = ":5000"
-)
-
 var (
 	dbConnection = os.Getenv("DB_CLIENT")
 	router       = gin.Default()
+	cfg          = config.Values.Get()
 )
 
 func Start() {
@@ -31,12 +29,12 @@ func Start() {
 	accountRepo := postgres.NewAccount(db)
 	accountService := service.NewAccount(accountRepo)
 	accountHandler := handler.NewAccount(accountService)
-	addAccountRoutes(router, accountHandler)
+	addAccountRoutes(router, accountHandler, accountService)
 
 	err = accountRepo.CreateTables()
 	if err != nil {
 		log.Panic(err)
 	}
 
-	router.Run(portNumber)
+	router.Run(cfg.Port)
 }

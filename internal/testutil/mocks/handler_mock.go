@@ -1,4 +1,4 @@
-package app
+package mocks
 
 import (
 	"net/http"
@@ -10,8 +10,7 @@ var (
 	hm = &handlerMock{}
 )
 
-type handlerMock struct {
-}
+type handlerMock struct{}
 
 func NewHandlerMock() *handlerMock {
 	return hm
@@ -60,7 +59,10 @@ func (m *handlerMock) DeleteAPIKey(c *gin.Context) {
 func (m *handlerMock) AddAccountRole(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "role added"})
 }
-func (m *handlerMock) DeleteAccountRole(c *gin.Context) {
+func (m *handlerMock) DeleteAccountRoleById(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "role deleted"})
+}
+func (m *handlerMock) DeleteAccountRoleByName(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "role deleted"})
 }
 func (m *handlerMock) FindRolesByAccount(c *gin.Context) {
@@ -68,4 +70,16 @@ func (m *handlerMock) FindRolesByAccount(c *gin.Context) {
 }
 func (m *handlerMock) UpdateRoles(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "roles updated"})
+}
+func (m *handlerMock) AccountInfo(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "retrieved account info"})
+}
+func (m *handlerMock) Logout(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "logout successful"})
+}
+func (m *handlerMock) OAuthLogin(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "login successful"})
+}
+func (m *handlerMock) OAuthCallback(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "callback successful"})
 }

@@ -319,10 +319,10 @@ By default, the service listens on port :5000.
 
 | Package | Statements | Functions |
 |---|---|---|
-|`app`| 63.9%| 50% |
+|`app`| 50.7%| 33.3% |
 |`config`| 100.0% | 100.0% |
 |`handlers`| 100.0% | 100.0 % |
 |`models`| 100.0% | 100.0% |
 |`postgres`| 100.0% | 100.0% |
 |`services`| 100.0% | 100.0% |
-|**total**| 97.8% | 97,8% |
+|**total**| 95.9% | 96,4% |

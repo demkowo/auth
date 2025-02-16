@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	m "github.com/demkowo/auth/internal/testutil/mocks"
 	model "github.com/demkowo/auth/models"
 	"github.com/demkowo/utils/helper"
 	"github.com/gin-gonic/gin"
@@ -22,8 +23,8 @@ var (
 	tn, _  = time.Parse("2006-01-02T15:04:05", "2025-02-06T11:35:20")
 	errMap map[string]error
 
-	mockService = NewServiceMock()
-	handler     = NewAccount(mockService)
+	mService = m.NewServiceMock()
+	handler  = NewAccount(mService)
 
 	acc            model.Account
 	defaultAccount = model.Account{
@@ -76,9 +77,9 @@ func Test_Add_Success(t *testing.T) {
 
 	handler.Add(c)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusCreated, w.Code)
 	assert.JSONEq(t, `{
-		"code":200,
+		"code":201,
 		"data":[{
 			"id":"00000000-0000-0000-0000-000000000000",
 			"email":"test@test.com",
@@ -89,11 +90,10 @@ func Test_Add_Success(t *testing.T) {
 			"created":"0001-01-01T00:00:00Z",
 			"updated":"0001-01-01T00:00:00Z",
 			"blocked":"0001-01-01T00:00:00Z",
-			"deleted":false
-		}],
+			"deleted":false,"providers":null}],
 		"message":"account registered successfully",
-		"status":"OK"
-	}`, w.Body.String())
+		"status":"Created"}`,
+		w.Body.String())
 }
 
 func Test_Add_BindJSONError(t *testing.T) {
@@ -134,7 +134,7 @@ func Test_Add_AddError(t *testing.T) {
 	c.Request = setReq("POST", "/accounts", `{"email":"test@test.com","password":"Qwerty!23","nickname":"tester"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_Add_AddError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.Add(c)
 
@@ -203,7 +203,7 @@ func Test_Block_BlockError(t *testing.T) {
 	c.Request = setReq("POST", "/block", `{"account_id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3","until":"2025-02-02"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_Block_BlockError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.Block(c)
 
@@ -246,7 +246,7 @@ func Test_Delete_DeleteError(t *testing.T) {
 	c.Request = httptest.NewRequest("DELETE", "/accounts/"+acc.Id.String(), nil)
 
 	helper.AddMock(helper.Mock{Test: "Test_Delete_DeleteError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.Delete(c)
 
@@ -271,7 +271,7 @@ func Test_Find_FindError(t *testing.T) {
 	errMap["Find"] = errors.New("Find error")
 	c.Request = httptest.NewRequest("GET", "/api/v1/auth/find", nil)
 
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.Find(c)
 
@@ -283,40 +283,52 @@ func Test_GetByEmail_Success(t *testing.T) {
 	clearMock()
 
 	c.Params = []gin.Param{{Key: "email", Value: "admin@admin.com"}}
-	c.Request = httptest.NewRequest("GET", "/accounts/admin@admin.com", nil)
+	c.Request = setReq("POST", "/get-by-email", `{"email": "admin@admin.com"}`)
 
-	mockService.AddMock(Mock{Account: &acc})
+	helper.AddMock(helper.Mock{Test: "Test_GetByEmail_Success"})
+	mService.AddMock(m.Service{Account: &acc})
 
 	handler.GetByEmail(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.JSONEq(t, `{
-		"code":200,
-		"data":[{
-			"id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3",
-			"email":"admin@admin.com",
-			"password":"secretHashedPass",
-			"nickname":"admin",
-			"roles":null,
-			"api_keys":null,
-			"created":"2025-02-06T11:35:20Z",
-			"updated":"2025-02-06T11:35:20Z",
-			"blocked":"0001-01-01T00:00:00Z",
-			"deleted":false
-		}],
-		"message":"account fetched successfully",
-		"status":"OK"
-	}`, w.Body.String())
+	"code":200,
+	"data":[{
+		"id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3",
+		"email":"admin@admin.com",
+		"password":"secretHashedPass",
+		"nickname":"admin",
+		"roles":null,"api_keys":null,
+		"created":"2025-02-06T11:35:20Z",
+		"updated":"2025-02-06T11:35:20Z",
+		"blocked":"0001-01-01T00:00:00Z",
+		"deleted":false,"providers":null}],
+	"message":"account fetched successfully",
+	"status":"OK"}`, w.Body.String())
+}
+
+func Test_GetByEmail_BindJSONError(t *testing.T) {
+	clearMock()
+
+	errMap["BindJSON"] = errors.New("BindJSON error")
+	c.Request = setReq("POST", "/get-by-email", `{"email": "admin@admin.com"}`)
+
+	helper.AddMock(helper.Mock{Test: "Test_GetByEmail_BindJSONError", Error: errMap})
+
+	handler.GetByEmail(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.JSONEq(t, `{"causes":["BindJSON error"],"code":400,"error":"invalid JSON","status":"Bad Request"}`, w.Body.String())
 }
 
 func Test_GetByEmail_GetByEmailError(t *testing.T) {
 	clearMock()
 
 	errMap["GetByEmail"] = errors.New("GetByEmail error")
-	c.Params = []gin.Param{{Key: "email", Value: "admin@admin.com"}}
-	c.Request = httptest.NewRequest("GET", "/accounts/admin@admin.com", nil)
+	c.Request = setReq("POST", "/get-by-email", `{"email": "admin@admin.com"}`)
 
-	mockService.AddMock(Mock{Error: errMap})
+	helper.AddMock(helper.Mock{Test: "Test_GetByEmail_GetByEmailError"})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.GetByEmail(c)
 
@@ -331,7 +343,7 @@ func Test_GetById_Success(t *testing.T) {
 	c.Request = httptest.NewRequest("GET", "/accounts/"+acc.Id.String(), nil)
 
 	helper.AddMock(helper.Mock{Test: "Test_GetById_Success"})
-	mockService.AddMock(Mock{Account: &acc})
+	mService.AddMock(m.Service{Account: &acc})
 
 	handler.GetById(c)
 
@@ -348,11 +360,9 @@ func Test_GetById_Success(t *testing.T) {
 			"created":"2025-02-06T11:35:20Z",
 			"updated":"2025-02-06T11:35:20Z",
 			"blocked":"0001-01-01T00:00:00Z",
-			"deleted":false
-		}],
+			"deleted":false,"providers":null}],
 		"message":"account fetched successfully",
-		"status":"OK"
-	}`, w.Body.String())
+		"status":"OK"}`, w.Body.String())
 }
 
 func Test_GetById_ParseUUIDError(t *testing.T) {
@@ -379,7 +389,7 @@ func Test_GetById_ServiceError(t *testing.T) {
 	errMap["GetById"] = errors.New("GetById error")
 
 	helper.AddMock(helper.Mock{Test: "Test_GetById_ServiceError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.GetById(c)
 
@@ -393,7 +403,7 @@ func Test_Login_Success(t *testing.T) {
 	c.Request = setReq("POST", "/login", `{"email":"admin@admin.com","password":"secret"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_Login_Success"})
-	mockService.AddMock(Mock{Token: "someValidToken"})
+	mService.AddMock(m.Service{Token: "someValidToken"})
 
 	handler.Login(c)
 
@@ -422,7 +432,7 @@ func Test_Login_LoginError(t *testing.T) {
 	c.Request = setReq("POST", "/login", `{"email":"admin@admin.com","password":"wrong"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_Login_LoginError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.Login(c)
 
@@ -435,7 +445,7 @@ func Test_RefreshToken_Success(t *testing.T) {
 
 	c.Request = setReq("POST", "/refresh", "", "Bearer sometoken")
 
-	mockService.AddMock(Mock{Token: "someValidToken"})
+	mService.AddMock(m.Service{Token: "someValidToken"})
 
 	handler.RefreshToken(c)
 
@@ -450,7 +460,7 @@ func Test_RefreshToken_GetHeaderError(t *testing.T) {
 	req := httptest.NewRequest("POST", "/refresh", nil)
 	c.Request = req
 
-	mockService.AddMock(Mock{})
+	mService.AddMock(m.Service{})
 
 	handler.RefreshToken(c)
 
@@ -463,7 +473,7 @@ func Test_RefreshToken_HeaderFormatError(t *testing.T) {
 
 	c.Request = setReq("POST", "/refresh", "", "invalidToken")
 
-	mockService.AddMock(Mock{})
+	mService.AddMock(m.Service{})
 
 	handler.RefreshToken(c)
 
@@ -477,7 +487,7 @@ func Test_RefreshToken_RefreshTokenError(t *testing.T) {
 	errMap["RefreshToken"] = errors.New("RefreshToken error")
 	c.Request = setReq("POST", "/refresh", "", "Bearer invalidToken")
 
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.RefreshToken(c)
 
@@ -520,7 +530,7 @@ func Test_Unblock_ParseUUIDError(t *testing.T) {
 
 	helper.AddMock(helper.Mock{Test: "Test_Unblock_ParseUUIDError", Error: errMap})
 
-	mockService.AddMock(Mock{})
+	mService.AddMock(m.Service{})
 
 	handler.Unblock(c)
 
@@ -535,7 +545,7 @@ func Test_Unblock_UnblockError(t *testing.T) {
 	c.Request = setReq("POST", "/unblock", `{"account_id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_Unblock_UnblockError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.Unblock(c)
 
@@ -549,7 +559,7 @@ func Test_UpdatePassword_Success(t *testing.T) {
 	c.Request = setReq("POST", "/update-password", `{"id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3","old_pass":"old123","new_pass":"new123"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_UpdatePassword_Success"})
-	mockService.AddMock(Mock{})
+	mService.AddMock(m.Service{})
 
 	handler.UpdatePassword(c)
 
@@ -593,7 +603,7 @@ func Test_UpdatePassword_UpdatePasswordError(t *testing.T) {
 	c.Request = setReq("POST", "/update-password", `{"id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3","old_pass":"old","new_pass":"new"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_UpdatePassword_UpdatePasswordError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.UpdatePassword(c)
 
@@ -608,23 +618,21 @@ func Test_AddAPIKey_Success(t *testing.T) {
 	c.Request = setReq("POST", "/api/v1/auth/api-key/"+acc.Id.String(), `{"expires_at":"2026-02-06T00:00:00Z"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAPIKey_Success"})
-	mockService.AddMock(Mock{ApiKey: &model.APIKey{Key: "validAPIKey"}})
+	mService.AddMock(m.Service{ApiKey: &model.APIKey{Key: "validAPIKey"}})
 
 	handler.AddAPIKey(c)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusCreated, w.Code)
 	assert.JSONEq(t, `{
-		"code":200,
+		"code":201,
 		"data":[{
 			"id":"00000000-0000-0000-0000-000000000000",
 			"key":"validAPIKey",
 			"account_id":"00000000-0000-0000-0000-000000000000",
 			"created_at":"0001-01-01T00:00:00Z",
-			"expires_at":"0001-01-01T00:00:00Z"
-		}],
+			"expires_at":"0001-01-01T00:00:00Z"}],
 		"message":"api key created successfully",
-		"status":"OK"
-	}`, w.Body.String())
+		"status":"Created"}`, w.Body.String())
 }
 
 func Test_AddAPIKey_ParseUUIDError(t *testing.T) {
@@ -635,7 +643,7 @@ func Test_AddAPIKey_ParseUUIDError(t *testing.T) {
 	errMap["ParseUUID"] = errors.New("ParseUUID error")
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAPIKey_ParseUUIDError", Error: errMap})
-	mockService.AddMock(Mock{ApiKey: &model.APIKey{Key: "validAPIKey"}})
+	mService.AddMock(m.Service{ApiKey: &model.APIKey{Key: "validAPIKey"}})
 
 	handler.AddAPIKey(c)
 
@@ -651,7 +659,7 @@ func Test_AddAPIKey_BindJSONError(t *testing.T) {
 	errMap["BindJSON"] = errors.New("BindJSON error")
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAPIKey_BindJSONError", Error: errMap})
-	mockService.AddMock(Mock{ApiKey: &model.APIKey{Key: "validAPIKey"}})
+	mService.AddMock(m.Service{ApiKey: &model.APIKey{Key: "validAPIKey"}})
 
 	handler.AddAPIKey(c)
 
@@ -667,7 +675,7 @@ func Test_AddAPIKey_AddAPIKeyError(t *testing.T) {
 	c.Request = setReq("POST", "/api/v1/auth/api-key/"+acc.Id.String(), `{"expires_at":"2026-02-06T00:00:00Z"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAPIKey_AddAPIKeyError"})
-	mockService.AddMock(Mock{Error: errMap, ApiKey: &model.APIKey{Key: "validAPIKey"}})
+	mService.AddMock(m.Service{Error: errMap, ApiKey: &model.APIKey{Key: "validAPIKey"}})
 
 	handler.AddAPIKey(c)
 
@@ -680,7 +688,7 @@ func Test_AuthenticateByAPIKey_Success(t *testing.T) {
 
 	c.Request = setReq("GET", "/api-key-auth", "", "Bearer someValidKey")
 
-	mockService.AddMock(Mock{Account: &acc})
+	mService.AddMock(m.Service{Account: &acc})
 
 	handler.AuthenticateByAPIKey(c)
 
@@ -697,11 +705,9 @@ func Test_AuthenticateByAPIKey_Success(t *testing.T) {
 			"created":"2025-02-06T11:35:20Z",
 			"updated":"2025-02-06T11:35:20Z",
 			"blocked":"0001-01-01T00:00:00Z",
-			"deleted":false
-		}],
+			"deleted":false,"providers":null}],
 		"message":"authenticated successfully",
-		"status":"OK"
-	}`, w.Body.String())
+		"status":"OK"}`, w.Body.String())
 }
 
 func Test_AuthenticateByAPIKey_GetHeaderError(t *testing.T) {
@@ -721,7 +727,7 @@ func Test_AuthenticateByAPIKey_AuthenticateByAPIKeyError(t *testing.T) {
 	errMap["AuthenticateByAPIKey"] = errors.New("AuthenticateByAPIKey error")
 	c.Request = setReq("GET", "/api-key-auth", "", "Bearer invalid")
 
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.AuthenticateByAPIKey(c)
 
@@ -732,20 +738,20 @@ func Test_AuthenticateByAPIKey_AuthenticateByAPIKeyError(t *testing.T) {
 func Test_DeleteAPIKey_Success(t *testing.T) {
 	clearMock()
 
-	c.Request = setReq("POST", "/api-keys/delete", `{"api_key":"someAPIKey"}`)
+	c.Request = setReq("POST", "/api-keys/delete", `{"id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_DeleteAPIKey_Success"})
 
 	handler.DeleteAPIKey(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"code":200,"data":["someAPIKey"],"message":"api key deleted successfully","status":"OK"}`, w.Body.String())
+	assert.JSONEq(t, `{"code":200,"data":["3a82ef35-6de8-4eaa-9f53-5a99645772e3"],"message":"api key deleted successfully","status":"OK"}`, w.Body.String())
 }
 
 func Test_DeleteAPIKey_BindJSONError(t *testing.T) {
 	clearMock()
 
-	c.Request = setReq("POST", "/api-keys/delete", `{"api_key":123}`)
+	c.Request = setReq("POST", "/api-keys/delete", `{"id":123}`)
 	errMap["BindJSON"] = errors.New("BindJSON error")
 
 	helper.AddMock(helper.Mock{Test: "Test_DeleteAPIKey_BindJSONError", Error: errMap})
@@ -756,14 +762,28 @@ func Test_DeleteAPIKey_BindJSONError(t *testing.T) {
 	assert.JSONEq(t, `{"causes":["BindJSON error"],"code":400,"error":"invalid JSON","status":"Bad Request"}`, w.Body.String())
 }
 
+func Test_DeleteAPIKey_ParseUUIDError(t *testing.T) {
+	clearMock()
+
+	c.Request = setReq("POST", "/api-keys/delete", `{"id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3"}`)
+	errMap["ParseUUID"] = errors.New("ParseUUID error")
+
+	helper.AddMock(helper.Mock{Test: "Test_DeleteAPIKey_ParseUUIDError", Error: errMap})
+
+	handler.DeleteAPIKey(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.JSONEq(t, `{"causes":["ParseUUID error"],"code":400,"error":"invalid UUID format","status":"Bad Request"}`, w.Body.String())
+}
+
 func Test_DeleteAPIKey_DeleteAPIKeyError(t *testing.T) {
 	clearMock()
 
 	errMap["DeleteAPIKey"] = errors.New("DeleteAPIKey error")
-	c.Request = setReq("POST", "/api-keys/delete", `{"api_key":"someAPIKey"}`)
+	c.Request = setReq("POST", "/api-keys/delete", `{"id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_DeleteAPIKey_DeleteAPIKeyError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.DeleteAPIKey(c)
 
@@ -781,8 +801,8 @@ func Test_AddAccountRole_Success(t *testing.T) {
 
 	handler.AddAccountRole(c)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"code":200,"data":[null],"message":"role assigned to account successfully","status":"OK"}`, w.Body.String())
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.JSONEq(t, `{"code":201,"data":[null],"message":"role assigned to account successfully","status":"Created"}`, w.Body.String())
 }
 
 func Test_AddAccountRole_ParseUUIDError(t *testing.T) {
@@ -823,7 +843,7 @@ func Test_AddAccountRole_AddAccountRoleError(t *testing.T) {
 	c.Request = setReq("POST", "/accounts/"+acc.Id.String()+"/roles", `{"role":"tester"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_AddAccountRole_AddAccountRoleError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.AddAccountRole(c)
 
@@ -831,64 +851,89 @@ func Test_AddAccountRole_AddAccountRoleError(t *testing.T) {
 	assert.JSONEq(t, `{"causes":["AddAccountRole error"],"code":500,"error":"failed to add role to account","status":"Internal Server Error"}`, w.Body.String())
 }
 
-func Test_DeleteAccountRole_Success(t *testing.T) {
+func Test_DeleteAccountRoleById_Success(t *testing.T) {
 	clearMock()
 
-	c.Params = []gin.Param{{Key: "account_id", Value: acc.Id.String()}}
-	c.Request = setReq("DELETE", "/accounts/"+acc.Id.String()+"/roles", `{"role":"tester"}`)
+	c.Params = []gin.Param{{Key: "account_id", Value: "3a82ef35-6de8-4eaa-9f53-5a99645772e3"}}
 
-	helper.AddMock(helper.Mock{Test: "Test_DeleteAccountRole_Success"})
+	helper.AddMock(helper.Mock{Test: "Test_DeleteAccountRoleById_Success"})
 
-	handler.DeleteAccountRole(c)
+	handler.DeleteAccountRoleById(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	assert.JSONEq(t, `{"code":200,"data":["tester"],"message":"role deleted from account successfully","status":"OK"}`, w.Body.String())
+	assert.JSONEq(t, `{"code":200,"data":["3a82ef35-6de8-4eaa-9f53-5a99645772e3"],"message":"role deleted from account successfully","status":"OK"}`, w.Body.String())
 }
 
 func Test_DeleteAccountRole_ParseUUIDError(t *testing.T) {
 	clearMock()
 
-	c.Params = []gin.Param{{Key: "account_id", Value: "invalidUUID"}}
-	c.Request = setReq("DELETE", "/accounts/invalidUUID/roles", `{"role":"tester"}`)
+	c.Params = []gin.Param{{Key: "account_id", Value: "3a82ef35-6de8-4eaa-9f53-5a99645772e3"}}
 	errMap["ParseUUID"] = errors.New("ParseUUID error")
 
 	helper.AddMock(helper.Mock{Test: "Test_DeleteAccountRole_ParseUUIDError", Error: errMap})
 
-	handler.DeleteAccountRole(c)
+	handler.DeleteAccountRoleById(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.JSONEq(t, `{"causes":["ParseUUID error"],"code":400,"error":"invalid UUID format","status":"Bad Request"}`, w.Body.String())
 }
 
-func Test_DeleteAccountRole_BindJSONError(t *testing.T) {
+func Test_DeleteAccountRoleById_Error(t *testing.T) {
 	clearMock()
 
+	errMap["DeleteAccountRoleById"] = errors.New("DeleteAccountRoleById error")
 	c.Params = []gin.Param{{Key: "account_id", Value: acc.Id.String()}}
+
+	helper.AddMock(helper.Mock{Test: "Test_DeleteAccountRoleById_Error"})
+	mService.AddMock(m.Service{Error: errMap})
+
+	handler.DeleteAccountRoleById(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.JSONEq(t, `{"causes":["DeleteAccountRoleById error"],"code":500,"error":"failed to delete role from account","status":"Internal Server Error"}`, w.Body.String())
+}
+
+func Test_DeleteAccountRoleByName_Success(t *testing.T) {
+	clearMock()
+
+	c.Request = setReq("DELETE", "/accounts/"+acc.Id.String()+"/roles", `{"role":"tester"}`)
+
+	helper.AddMock(helper.Mock{Test: "Test_DeleteAccountRoleByName_Success"})
+
+	handler.DeleteAccountRoleByName(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"code":200,"data":["tester"],"message":"role deleted from account successfully","status":"OK"}`, w.Body.String())
+}
+
+func Test_DeleteAccountRoleByName_BindJSONError(t *testing.T) {
+	clearMock()
+
 	c.Request = setReq("DELETE", "/accounts/"+acc.Id.String()+"/roles", `{"role":123}`)
 	errMap["BindJSON"] = errors.New("BindJSON error")
 
-	helper.AddMock(helper.Mock{Test: "Test_DeleteAccountRole_BindJSONError", Error: errMap})
+	helper.AddMock(helper.Mock{Test: "Test_DeleteAccountRoleByName_BindJSONError", Error: errMap})
 
-	handler.DeleteAccountRole(c)
+	handler.DeleteAccountRoleByName(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.JSONEq(t, `{"causes":["BindJSON error"],"code":400,"error":"invalid JSON","status":"Bad Request"}`, w.Body.String())
 }
 
-func Test_DeleteAccountRole_DeleteAccountRoleError(t *testing.T) {
+func Test_DeleteAccountRoleByName_Error(t *testing.T) {
 	clearMock()
 
-	errMap["DeleteAccountRole"] = errors.New("DeleteAccountRole error")
+	errMap["DeleteAccountRoleByName"] = errors.New("DeleteAccountRoleByName error")
 	c.Params = []gin.Param{{Key: "account_id", Value: acc.Id.String()}}
 	c.Request = setReq("DELETE", "/accounts/"+acc.Id.String()+"/roles", `{"role":"tester"}`)
 
-	helper.AddMock(helper.Mock{Test: "Test_DeleteAccountRole_DeleteAccountRoleError"})
-	mockService.AddMock(Mock{Error: errMap})
+	helper.AddMock(helper.Mock{Test: "Test_DeleteAccountRoleByName_Error"})
+	mService.AddMock(m.Service{Error: errMap})
 
-	handler.DeleteAccountRole(c)
+	handler.DeleteAccountRoleByName(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	assert.JSONEq(t, `{"causes":["DeleteAccountRole error"],"code":500,"error":"failed to delete role from account","status":"Internal Server Error"}`, w.Body.String())
+	assert.JSONEq(t, `{"causes":["DeleteAccountRoleByName error"],"code":500,"error":"failed to delete role from account","status":"Internal Server Error"}`, w.Body.String())
 }
 
 func Test_FindRolesByAccount_Success(t *testing.T) {
@@ -899,7 +944,7 @@ func Test_FindRolesByAccount_Success(t *testing.T) {
 	acc.Roles = []model.AccountRole{{Id: uuid.MustParse("3a82ef35-6de8-4eaa-9f53-5a99645772e3"), Name: "admin"}}
 
 	helper.AddMock(helper.Mock{Test: "Test_FindRolesByAccount_Success"})
-	mockService.AddMock(Mock{AccountRoles: acc.Roles})
+	mService.AddMock(m.Service{AccountRoles: acc.Roles})
 
 	handler.FindRolesByAccount(c)
 
@@ -935,7 +980,7 @@ func Test_FindRolesByAccount_FindRolesByAccountError(t *testing.T) {
 	c.Request = httptest.NewRequest("GET", "/accounts/"+acc.Id.String()+"/roles", nil)
 
 	helper.AddMock(helper.Mock{Test: "Test_FindRolesByAccount_FindRolesByAccountError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.FindRolesByAccount(c)
 
@@ -949,7 +994,7 @@ func Test_UpdateRoles_Success(t *testing.T) {
 	c.Request = setReq("POST", "/roles/update", `{"role_update":"someData"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_UpdateRoles_Success"})
-	mockService.AddMock(Mock{})
+	mService.AddMock(m.Service{})
 
 	handler.UpdateRoles(c)
 
@@ -978,10 +1023,142 @@ func Test_UpdateRoles_UpdateRolesError(t *testing.T) {
 	c.Request = setReq("POST", "/roles/update", `{"role_update":"someData"}`)
 
 	helper.AddMock(helper.Mock{Test: "Test_UpdateRoles_UpdateRolesError"})
-	mockService.AddMock(Mock{Error: errMap})
+	mService.AddMock(m.Service{Error: errMap})
 
 	handler.UpdateRoles(c)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.JSONEq(t, `{"causes":["UpdateRoles error"],"code":500,"error":"failed to update roles","status":"Internal Server Error"}`, w.Body.String())
+}
+
+func Test_Logout_Succesfull(t *testing.T) {
+	clearMock()
+
+	c.Request = setReq("POST", "/logout", `{"account_id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3"}`)
+
+	helper.AddMock(helper.Mock{Test: "Test_Logout_Succesfull"})
+
+	handler.Logout(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"code":200,"data":null,"message":"logout successful","status":"OK"}`, w.Body.String())
+}
+
+func Test_Logout_BindJSONError(t *testing.T) {
+	clearMock()
+
+	errMap["BindJSON"] = errors.New("BindJSON error")
+	c.Request = setReq("POST", "/logout", `{"account_id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3"}`)
+
+	helper.AddMock(helper.Mock{Test: "Test_Logout_BindJSONError", Error: errMap})
+
+	handler.Logout(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.JSONEq(t, `{"causes":["BindJSON error"],"code":400,"error":"invalid JSON","status":"Bad Request"}`, w.Body.String())
+}
+
+func Test_Logout_ServiceError(t *testing.T) {
+	clearMock()
+
+	errMap["Logout"] = errors.New("Logout error")
+	c.Request = setReq("POST", "/logout", `{"account_id":"3a82ef35-6de8-4eaa-9f53-5a99645772e3"}`)
+
+	helper.AddMock(helper.Mock{Test: "Test_Logout_ServiceError"})
+	mService.AddMock(m.Service{Error: errMap})
+
+	handler.Logout(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.JSONEq(t, `{"causes":["Logout error"],"code":500,"error":"failed to logout","status":"Internal Server Error"}`, w.Body.String())
+}
+
+func Test_OAuthCallback_Succesfull(t *testing.T) {
+	clearMock()
+
+	c.Request = httptest.NewRequest("Get", "/callback/google?code=someValidCode", nil)
+
+	handler.OAuthCallback(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.JSONEq(t, `{"code":200,"data":[null],"message":"OAuth2 callback successful","status":"OK"}`, w.Body.String())
+}
+
+func Test_OAuthCallback_CodeError(t *testing.T) {
+	clearMock()
+
+	c.Request = httptest.NewRequest("Get", "/callback/google", nil)
+
+	handler.OAuthCallback(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.JSONEq(t, `{"causes":null,"code":400,"error":"code not provided","status":"Bad Request"}`, w.Body.String())
+}
+
+func Test_OAuthCallback_ExchangeCodeForTokenError(t *testing.T) {
+	clearMock()
+
+	errMap["ExchangeCodeForToken"] = errors.New("ExchangeCodeForToken error")
+	c.Request = httptest.NewRequest("Get", "/callback/google?code=someValidCode", nil)
+
+	mService.AddMock(m.Service{Error: errMap})
+
+	handler.OAuthCallback(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.JSONEq(t, `{"causes":["ExchangeCodeForToken error"],"code":500,"error":"failed to exchange code for token","status":"Internal Server Error"}`, w.Body.String())
+}
+
+func Test_OAuthCallback_GetAccountInfoError(t *testing.T) {
+	clearMock()
+
+	errMap["GetAccountInfo"] = errors.New("GetAccountInfo error")
+	c.Request = httptest.NewRequest("Get", "/callback/google?code=someValidCode", nil)
+
+	mService.AddMock(m.Service{Error: errMap})
+
+	handler.OAuthCallback(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.JSONEq(t, `{"causes":["GetAccountInfo error"],"code":500,"error":"failed to get account info","status":"Internal Server Error"}`, w.Body.String())
+}
+
+func Test_OAuthCallback_StoreAccountError(t *testing.T) {
+	clearMock()
+
+	errMap["StoreAccount"] = errors.New("StoreAccount error")
+	c.Request = httptest.NewRequest("Get", "/callback/google?code=someValidCode", nil)
+
+	mService.AddMock(m.Service{Error: errMap})
+
+	handler.OAuthCallback(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.JSONEq(t, `{"causes":["StoreAccount error"],"code":500,"error":"failed to store account","status":"Internal Server Error"}`, w.Body.String())
+}
+
+func Test_OAuthLogin_Succesfull(t *testing.T) {
+	clearMock()
+
+	c.Request = httptest.NewRequest("Get", "/login/google", nil)
+	expectedURL := `https://mockprovider.com/auth?access_type=offline&client_id=mock-client-id&redirect_uri=http%3A%2F%2Flocalhost%3A8080%2Fcallback&response_type=code&scope=profile+email&state=state`
+
+	handler.OAuthLogin(c)
+
+	assert.Equal(t, http.StatusTemporaryRedirect, w.Code)
+	assert.Equal(t, expectedURL, w.Header().Get("Location"))
+}
+
+func Test_OAuthLogin_GetOAuthConfigError(t *testing.T) {
+	clearMock()
+
+	errMap["GetOAuthConfig"] = errors.New("GetOAuthConfig error")
+	c.Request = httptest.NewRequest("Get", "/login/google", nil)
+
+	mService.AddMock(m.Service{Error: errMap})
+
+	handler.OAuthLogin(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, `{"causes":["GetOAuthConfig error"],"code":500,"error":"failed to get OAuth2 config","status":"Internal Server Error"}`, w.Body.String())
 }

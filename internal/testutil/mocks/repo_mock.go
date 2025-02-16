@@ -1,6 +1,7 @@
-package service
+package mocks
 
 import (
+	"database/sql"
 	"errors"
 	"log"
 	"net/http"
@@ -15,22 +16,23 @@ var (
 )
 
 type repoMock struct {
-	mock Mock
+	mock Repo
 }
 
-type Mock struct {
+type Repo struct {
 	Error        map[string]error
 	Accounts     []*model.Account
 	Account      *model.Account
 	ApiKey       *model.APIKey
 	AccountRoles []model.AccountRole
+	OAuth2Token  *model.OAuth2Token
 }
 
 func NewRepoMock() *repoMock {
 	return am
 }
 
-func (r *repoMock) AddMock(mock Mock) {
+func (r *repoMock) AddMock(mock Repo) {
 	r.mock = mock
 }
 
@@ -66,6 +68,9 @@ func (r *repoMock) Find() ([]*model.Account, *resp.Err) {
 
 func (r *repoMock) GetByEmail(email string) (*model.Account, *resp.Err) {
 	if r.mock.Error["GetByEmail"] != nil {
+		if r.mock.Error["GetByEmail"] == sql.ErrNoRows {
+			return nil, resp.Error(http.StatusInternalServerError, "account not found", []interface{}{sql.ErrNoRows})
+		}
 		return nil, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{r.mock.Error["GetByEmail"].Error()})
 	}
 	return r.mock.Account, nil
@@ -99,7 +104,7 @@ func (r *repoMock) AddAPIKey(apiKey *model.APIKey) (*model.APIKey, *resp.Err) {
 	return apiKey, nil
 }
 
-func (r *repoMock) DeleteAPIKey(key string) *resp.Err {
+func (r *repoMock) DeleteAPIKey(id uuid.UUID) *resp.Err {
 	if r.mock.Error["DeleteAPIKey"] != nil {
 		return resp.Error(http.StatusInternalServerError, "failed to delete API key", []interface{}{r.mock.Error["DeleteAPIKey"].Error()})
 	}
@@ -130,9 +135,16 @@ func (r *repoMock) AddAccountRole(accountId uuid.UUID, role string) (*model.Acco
 	return &model.AccountRole{Id: accountId, Name: role}, nil
 }
 
-func (r *repoMock) DeleteAccountRole(accountId uuid.UUID, role string) *resp.Err {
-	if r.mock.Error["DeleteAccountRole"] != nil {
-		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{r.mock.Error["DeleteAccountRole"].Error()})
+func (r *repoMock) DeleteAccountRoleById(accountId uuid.UUID) *resp.Err {
+	if r.mock.Error["DeleteAccountRoleById"] != nil {
+		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{r.mock.Error["DeleteAccountRoleById"].Error()})
+	}
+	return nil
+}
+
+func (r *repoMock) DeleteAccountRoleByName(role string) *resp.Err {
+	if r.mock.Error["DeleteAccountRoleByName"] != nil {
+		return resp.Error(http.StatusInternalServerError, "failed to delete role from account", []interface{}{r.mock.Error["DeleteAccountRoleByName"].Error()})
 	}
 	return nil
 }
@@ -142,4 +154,25 @@ func (r *repoMock) FindRolesByAccount(accountId uuid.UUID) ([]model.AccountRole,
 		return nil, resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{r.mock.Error["FindRolesByAccount"].Error()})
 	}
 	return r.mock.AccountRoles, nil
+}
+
+func (r *repoMock) AddOAuth2Token(accountId string, token *model.OAuth2Token) *resp.Err {
+	if r.mock.Error["AddOAuth2Token"] != nil {
+		return resp.Error(http.StatusInternalServerError, "failed to add OAuth2 token", []interface{}{r.mock.Error["AddOAuth2Token"].Error()})
+	}
+	return nil
+}
+
+func (r *repoMock) GetOAuth2TokenByaccountId(accountId string) (*model.OAuth2Token, *resp.Err) {
+	if r.mock.Error["GetOAuth2TokenByaccountId"] != nil {
+		return nil, resp.Error(http.StatusInternalServerError, "failed to get OAuth2 token", []interface{}{r.mock.Error["GetOAuth2TokenByaccountId"].Error()})
+	}
+	return r.mock.OAuth2Token, nil
+}
+
+func (r *repoMock) DeleteOAuth2Token(accountId string) *resp.Err {
+	if r.mock.Error["DeleteOAuth2Token"] != nil {
+		return resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{r.mock.Error["DeleteOAuth2Token"].Error()})
+	}
+	return nil
 }
