@@ -3,8 +3,6 @@ module github.com/demkowo/auth
 go 1.24.0
 
 require (
-	github.com/demkowo/dbclient v0.0.0-20250213164255-c2d2e5d5295b
-	//github.com/demkowo/utils v0.0.0-20250212135937-7ad617747049
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/google/uuid v1.6.0
@@ -14,6 +12,7 @@ require (
 )
 
 require (
+	github.com/demkowo/dbclient v0.0.0-20250213164255-c2d2e5d5295b
 	github.com/demkowo/utils v0.0.0-20250216224616-887732b44857
 	golang.org/x/oauth2 v0.26.0
 )

@@ -61,6 +61,12 @@ var (
 		Name: "admin",
 	}
 
+	token = model.OAuth2Token{
+		AccessToken:  "validtoken",
+		RefreshToken: "validNewToken",
+		Expiry:       time.Now(),
+	}
+
 	tableExists                 = sql.NullString{String: "to_regclass", Valid: true}
 	accountTableExistMock       = dbclient.Mock{Query: ACCOUNT_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
 	createAccountTableMock      = dbclient.Mock{Query: CREATE_ACCOUNT_TABLE, Args: []interface{}{}, Columns: []string{"id", "nickname", "email", "password", "created", "updated", "blocked", "deleted"}, Rows: [][]interface{}{{acc.Id, acc.Nickname, acc.Email, acc.Password, acc.Created, acc.Updated, blocked, acc.Deleted}}}
@@ -68,6 +74,8 @@ var (
 	createAccountRolesTableMock = dbclient.Mock{Query: CREATE_ACCOUNT_ROLES_TABLE, Args: []interface{}{}, Columns: []string{"id", "name"}, Rows: [][]interface{}{{role.Id, role.Name}}}
 	apiKeysTableExistMock       = dbclient.Mock{Query: APIKEY_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
 	createApiKeyTableMock       = dbclient.Mock{Query: CREATE_APIKEY_TABLE, Args: []interface{}{}, Columns: []string{"id", "key", "account_id", "created_at", "expires_at"}, Rows: [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}}}
+	oauth2TokensTableExistMock  = dbclient.Mock{Query: OAUTH2_TOKENS_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{sql.NullString{}}}}
+	createOAuth2TokensTableMock = dbclient.Mock{Query: CREATE_OAUTH2_TOKENS_TABLE, Args: []interface{}{}, Columns: []string{"account_id", "access_token", "refresh_token", "expiry"}, Rows: [][]interface{}{{acc.Id, "access_token", "refresh_token", acc.ExpiresAt}}}
 )
 
 func TestMain(m *testing.M) {
@@ -113,13 +121,15 @@ func Test_CreateTables_Success(t *testing.T) {
 	dbclient.AddMock(createAccountRolesTableMock)
 	dbclient.AddMock(apiKeysTableExistMock)
 	dbclient.AddMock(createApiKeyTableMock)
+	dbclient.AddMock(oauth2TokensTableExistMock)
+	dbclient.AddMock(createOAuth2TokensTableMock)
 
 	err := a.CreateTables()
 
 	assert.Nil(t, err)
 }
 
-func Test_CreateTables_ACCOUNT_TABLE_EXIST_Error(t *testing.T) {
+func Test_CreateTables_isAccountTableExistError(t *testing.T) {
 	dbclient.AddMock(dbclient.Mock{
 		Query: ACCOUNT_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{"invalidDataType"}},
 	})
@@ -129,7 +139,7 @@ func Test_CreateTables_ACCOUNT_TABLE_EXIST_Error(t *testing.T) {
 	assert.EqualError(t, err, "type mismatch for column 'to_regclass': expected sql.NullString, got string")
 }
 
-func Test_CreateTables_CREATE_ACCOUNT_TABLE_Error(t *testing.T) {
+func Test_CreateTables_createAccountTableError(t *testing.T) {
 	dbclient.AddMock(accountTableExistMock)
 	dbclient.AddMock(dbclient.Mock{
 		Query: CREATE_ACCOUNT_TABLE, Args: []interface{}{"invalidArg"},
@@ -144,7 +154,7 @@ func Test_CreateTables_CREATE_ACCOUNT_TABLE_Error(t *testing.T) {
 []`)
 }
 
-func Test_CreateTables_CREATE_ACCOUNT_TABLE_AlreadyExists(t *testing.T) {
+func Test_CreateTables_createAccountTableAlreadyExists(t *testing.T) {
 	dbclient.AddMock(dbclient.Mock{
 		Query: ACCOUNT_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{tableExists}},
 	})
@@ -159,7 +169,7 @@ func Test_CreateTables_CREATE_ACCOUNT_TABLE_AlreadyExists(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func Test_CreateTables_ACCOUNT_ROLES_TABLE_EXIST_Error(t *testing.T) {
+func Test_CreateTables_isAccountRolesTableExistError(t *testing.T) {
 	dbclient.AddMock(accountTableExistMock)
 	dbclient.AddMock(createAccountTableMock)
 	dbclient.AddMock(dbclient.Mock{
@@ -171,7 +181,7 @@ func Test_CreateTables_ACCOUNT_ROLES_TABLE_EXIST_Error(t *testing.T) {
 	assert.EqualError(t, err, "type mismatch for column 'to_regclass': expected sql.NullString, got string")
 }
 
-func Test_CreateTables_CREATE_ACCOUNT_ROLES_TABLE_Error(t *testing.T) {
+func Test_CreateTables_createAccountRolesTableError(t *testing.T) {
 	dbclient.AddMock(accountTableExistMock)
 	dbclient.AddMock(createAccountTableMock)
 	dbclient.AddMock(accountRolesTableExistMock)
@@ -186,7 +196,7 @@ func Test_CreateTables_CREATE_ACCOUNT_ROLES_TABLE_Error(t *testing.T) {
 []`)
 }
 
-func Test_CreateTables_CREATE_ACCOUNT_ROLES_TABLE_AlreadyExists(t *testing.T) {
+func Test_CreateTables_createAccountRolesTableAlreadyExists(t *testing.T) {
 	dbclient.AddMock(accountTableExistMock)
 	dbclient.AddMock(createAccountTableMock)
 	dbclient.AddMock(dbclient.Mock{
@@ -201,7 +211,7 @@ func Test_CreateTables_CREATE_ACCOUNT_ROLES_TABLE_AlreadyExists(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func Test_CreateTables_APIKEY_TABLE_EXIST_Error(t *testing.T) {
+func Test_CreateTables_isApiKeyTableExistError(t *testing.T) {
 	dbclient.AddMock(accountTableExistMock)
 	dbclient.AddMock(createAccountTableMock)
 	dbclient.AddMock(accountRolesTableExistMock)
@@ -215,7 +225,7 @@ func Test_CreateTables_APIKEY_TABLE_EXIST_Error(t *testing.T) {
 	assert.EqualError(t, err, "type mismatch for column 'to_regclass': expected sql.NullString, got string")
 }
 
-func Test_CreateTables_CREATE_APIKEY_TABLE_Error(t *testing.T) {
+func Test_CreateTables_createApiKeyTableError(t *testing.T) {
 	dbclient.AddMock(accountTableExistMock)
 	dbclient.AddMock(createAccountTableMock)
 	dbclient.AddMock(accountRolesTableExistMock)
@@ -233,7 +243,7 @@ func Test_CreateTables_CREATE_APIKEY_TABLE_Error(t *testing.T) {
 []`)
 }
 
-func Test_CreateTables_CREATE_APIKEY_TABLE_AlreadyExists(t *testing.T) {
+func Test_CreateTables_createApiKeyTableAlreadyExists(t *testing.T) {
 	dbclient.AddMock(accountTableExistMock)
 	dbclient.AddMock(createAccountTableMock)
 	dbclient.AddMock(accountRolesTableExistMock)
@@ -248,6 +258,60 @@ func Test_CreateTables_CREATE_APIKEY_TABLE_AlreadyExists(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+func Test_CreateTables_isOAuth2TokensTableExistError(t *testing.T) {
+	dbclient.AddMock(accountTableExistMock)
+	dbclient.AddMock(createAccountTableMock)
+	dbclient.AddMock(accountRolesTableExistMock)
+	dbclient.AddMock(createAccountRolesTableMock)
+	dbclient.AddMock(apiKeysTableExistMock)
+	dbclient.AddMock(createApiKeyTableMock)
+	dbclient.AddMock(dbclient.Mock{
+		Query: OAUTH2_TOKENS_TABLE_EXIST, Args: []interface{}{}, Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
+		Rows: [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}},
+	})
+	dbclient.AddMock(createOAuth2TokensTableMock)
+
+	err := a.CreateTables()
+
+	assert.EqualError(t, err, `invalid destinations length`)
+}
+
+func Test_CreateTables_createOAuth2TokensTableError(t *testing.T) {
+	dbclient.AddMock(accountTableExistMock)
+	dbclient.AddMock(createAccountTableMock)
+	dbclient.AddMock(accountRolesTableExistMock)
+	dbclient.AddMock(createAccountRolesTableMock)
+	dbclient.AddMock(apiKeysTableExistMock)
+	dbclient.AddMock(createApiKeyTableMock)
+	dbclient.AddMock(oauth2TokensTableExistMock)
+	dbclient.AddMock(dbclient.Mock{
+		Query: CREATE_OAUTH2_TOKENS_TABLE, Args: []interface{}{"invalidArg"}, Columns: []string{"id", "key", "account_id", "created_at", "expires_at"},
+		Rows: [][]interface{}{{apiKey.Id, apiKey.Key, apiKey.AccountId, apiKey.CreatedAt, apiKey.ExpiresAt}},
+	})
+
+	err := a.CreateTables()
+
+	assert.EqualError(t, err, `number of arguments in mock can't be higher than number of arguments in method:
+[invalidArg]
+[]`)
+}
+
+func Test_CreateTables_createOAuth2TokensTableAlreadyExists(t *testing.T) {
+	dbclient.AddMock(accountTableExistMock)
+	dbclient.AddMock(createAccountTableMock)
+	dbclient.AddMock(accountRolesTableExistMock)
+	dbclient.AddMock(createAccountRolesTableMock)
+	dbclient.AddMock(apiKeysTableExistMock)
+	dbclient.AddMock(createApiKeyTableMock)
+	dbclient.AddMock(oauth2TokensTableExistMock)
+	dbclient.AddMock(dbclient.Mock{
+		Query: CREATE_OAUTH2_TOKENS_TABLE, Args: []interface{}{}, Columns: []string{"to_regclass"}, Rows: [][]interface{}{{tableExists}},
+	})
+
+	err := a.CreateTables()
+
+	assert.Nil(t, err)
+}
 func Test_Add_Success(t *testing.T) {
 	clearMock()
 
@@ -523,7 +587,7 @@ func Test_GetByEmail_NotFoundError(t *testing.T) {
 	account, err := a.GetByEmail(acc.Email)
 
 	assert.Nil(t, account)
-	assert.Equal(t, resp.Error(http.StatusInternalServerError, fmt.Sprintf("account with email %s not found", acc.Email), []interface{}{sql.ErrNoRows}), err)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, fmt.Sprintf("account with email %s not found", acc.Email), []interface{}{sql.ErrNoRows.Error()}), err)
 }
 
 func Test_GetByEmail_blockedIsValid(t *testing.T) {
@@ -864,7 +928,7 @@ func Test_AddAPIKey_Error(t *testing.T) {
 func Test_DeleteAPIKey_Success(t *testing.T) {
 	clearMock()
 
-	dbclient.AddMock(dbclient.Mock{Query: DELETE_APIKEY, Args: []interface{}{apiKey.Key}})
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_APIKEY, Args: []interface{}{apiKey.Id}})
 
 	err := a.DeleteAPIKey(apiKey.Id)
 
@@ -876,7 +940,7 @@ func Test_DeleteAPIKey_Error(t *testing.T) {
 
 	errMap["Exec"] = errors.New("Exec error")
 
-	dbclient.AddMock(dbclient.Mock{Query: DELETE_APIKEY, Args: []interface{}{apiKey.Key}, Error: errMap})
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_APIKEY, Args: []interface{}{apiKey.Id}, Error: errMap})
 
 	err := a.DeleteAPIKey(apiKey.Id)
 
@@ -1080,7 +1144,7 @@ func Test_AddAccountRole_DuplicatedRoleError(t *testing.T) {
 func Test_DeleteAccountRoleById_Success(t *testing.T) {
 	clearMock()
 
-	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE_BY_ID, Args: []interface{}{role.Id, role.Name}})
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE_BY_ID, Args: []interface{}{role.Id}})
 
 	err := a.DeleteAccountRoleById(role.Id)
 
@@ -1102,7 +1166,7 @@ func Test_DeleteAccountRoleById_Error(t *testing.T) {
 func Test_DeleteAccountRoleByName_Success(t *testing.T) {
 	clearMock()
 
-	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE_BY_NAME, Args: []interface{}{role.Id, role.Name}})
+	dbclient.AddMock(dbclient.Mock{Query: DELETE_ACCOUNT_ROLE_BY_NAME, Args: []interface{}{role.Name}})
 
 	err := a.DeleteAccountRoleByName(role.Name)
 
@@ -1187,4 +1251,99 @@ func Test_FindRolesByAccount_RowsError(t *testing.T) {
 
 	assert.Nil(t, roles)
 	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to find roles", []interface{}{"Rows error"}), err)
+}
+
+func Test_AddOAuth2Token_Success(t *testing.T) {
+	clearMock()
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: ADD_OAUTH2_TOKEN, Args: []interface{}{acc.Id.String(), token.AccessToken, token.RefreshToken, token.Expiry},
+		Columns: []string{"account_id", "access_token", "refresh_token", "expiry"}})
+
+	err := a.AddOAuth2Token(acc.Id.String(), &token)
+
+	assert.Nil(t, err)
+}
+
+func Test_AddOAuth2Token_Error(t *testing.T) {
+	clearMock()
+
+	errMap["Exec"] = errors.New("Exec error")
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: ADD_OAUTH2_TOKEN, Args: []interface{}{acc.Id.String(), token.AccessToken, token.RefreshToken, token.Expiry},
+		Columns: []string{"account_id", "access_token", "refresh_token", "expiry"}, Error: errMap})
+
+	err := a.AddOAuth2Token(acc.Id.String(), &token)
+
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to add OAuth2 token", []interface{}{"Exec error"}), err)
+}
+
+func Test_GetOAuth2TokenByaccountId_Success(t *testing.T) {
+	clearMock()
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: GET_OAUTH2_TOKEN, Args: []interface{}{acc.Id.String()},
+		Columns: []string{"access_token", "refresh_token", "expiry"}, Rows: [][]interface{}{{token.AccessToken, token.RefreshToken, token.Expiry}}})
+
+	oAuthToken, err := a.GetOAuth2TokenByaccountId(acc.Id.String())
+
+	assert.Nil(t, err)
+	assert.Equal(t, &token, oAuthToken)
+}
+
+func Test_GetOAuth2TokenByaccountId_NotFoundError(t *testing.T) {
+	clearMock()
+
+	errMap["Scan"] = sql.ErrNoRows
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: GET_OAUTH2_TOKEN, Args: []interface{}{acc.Id.String()}, Error: errMap,
+		Columns: []string{"access_token", "refresh_token", "expiry"}, Rows: [][]interface{}{{token.AccessToken, token.RefreshToken, token.Expiry}}})
+
+	oAuthToken, err := a.GetOAuth2TokenByaccountId(acc.Id.String())
+
+	assert.Nil(t, oAuthToken)
+	assert.Equal(t, resp.Error(http.StatusNotFound, "OAuth2 token not found", []interface{}{"sql: no rows in result set"}), err)
+}
+
+func Test_GetOAuth2TokenByaccountId_ScanError(t *testing.T) {
+	clearMock()
+
+	errMap["Scan"] = errors.New("Scan error")
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: GET_OAUTH2_TOKEN, Args: []interface{}{acc.Id.String()}, Error: errMap,
+		Columns: []string{"access_token", "refresh_token", "expiry"}, Rows: [][]interface{}{{token.AccessToken, token.RefreshToken, token.Expiry}}})
+
+	oAuthToken, err := a.GetOAuth2TokenByaccountId(acc.Id.String())
+
+	assert.Nil(t, oAuthToken)
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to get OAuth2 token", []interface{}{"Scan error"}), err)
+}
+
+func Test_DeleteOAuth2Token_Success(t *testing.T) {
+	clearMock()
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: DELETE_OAUTH2_TOKEN, Args: []interface{}{acc.Id.String()},
+		Columns: []string{"access_token", "refresh_token", "expiry"}})
+
+	err := a.DeleteOAuth2Token(acc.Id.String())
+
+	assert.Nil(t, err)
+}
+
+func Test_DeleteOAuth2Token_Error(t *testing.T) {
+	clearMock()
+
+	errMap["Exec"] = errors.New("Exec error")
+
+	dbclient.AddMock(dbclient.Mock{
+		Query: DELETE_OAUTH2_TOKEN, Args: []interface{}{acc.Id.String()},
+		Columns: []string{"access_token", "refresh_token", "expiry"}, Error: errMap})
+
+	err := a.DeleteOAuth2Token(acc.Id.String())
+
+	assert.Equal(t, resp.Error(http.StatusInternalServerError, "failed to delete OAuth2 token", []interface{}{"Exec error"}), err)
 }

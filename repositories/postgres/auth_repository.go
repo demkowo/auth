@@ -3,6 +3,7 @@ package postgres
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -278,14 +279,18 @@ func (r *account) GetByEmail(email string) (*model.Account, *resp.Err) {
 		&blocked,
 		&acc.Deleted,
 	)
+	fmt.Println("===1===")
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			fmt.Println("===2===")
 			log.Printf("account with email %s not found", email)
-			return nil, resp.Error(http.StatusInternalServerError, "account not found", []interface{}{sql.ErrNoRows})
+			return nil, resp.Error(http.StatusInternalServerError, fmt.Sprintf("account with email %s not found", email), []interface{}{sql.ErrNoRows.Error()})
 		}
+		fmt.Println("===3===")
 		log.Printf("failed to scan rows GET_ACCOUNT_BY_EMAIL: %v", err)
 		return nil, resp.Error(http.StatusInternalServerError, "failed to get account", []interface{}{err.Error()})
 	}
+	fmt.Println("===4===")
 
 	if blocked.Valid {
 		acc.Blocked = blocked.Time
@@ -565,16 +570,20 @@ func (r *account) AddOAuth2Token(accountId string, token *model.OAuth2Token) *re
 }
 
 func (r *account) GetOAuth2TokenByaccountId(accountId string) (*model.OAuth2Token, *resp.Err) {
+	fmt.Println("===1===")
 	row := r.db.QueryRow(GET_OAUTH2_TOKEN, accountId)
 	var token model.OAuth2Token
 	err := row.Scan(&token.AccessToken, &token.RefreshToken, &token.Expiry)
 	if err != nil {
 		if err == sql.ErrNoRows {
+			fmt.Println("===2===")
 			return nil, resp.Error(http.StatusNotFound, "OAuth2 token not found", []interface{}{err.Error()})
 		}
+		fmt.Println("===3===")
 		log.Printf("failed to get OAuth2 token: %v", err)
 		return nil, resp.Error(http.StatusInternalServerError, "failed to get OAuth2 token", []interface{}{err.Error()})
 	}
+	fmt.Println("===4===")
 	return &token, nil
 }
 

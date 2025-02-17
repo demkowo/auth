@@ -84,16 +84,6 @@ func (r *account) CreateTables() error {
 		return err
 	}
 
-	if !tableName.Valid {
-		log.Println("table oauth2_tokens does not exist, creating it")
-		if _, err := r.db.Exec(CREATE_OAUTH2_TOKENS_TABLE); err != nil {
-			log.Printf("failed to create oauth2_tokens table: %v\n", err)
-			return err
-		}
-	} else {
-		log.Println("table oauth2_tokens already exists")
-	}
-
 	log.Println("All authentication-related tables are ready")
 	return nil
 }
@@ -174,7 +164,7 @@ func isOAuth2TokensTableExist(r *account) error {
 func createOAuth2TokensTable(r *account) error {
 	if !tableName.Valid {
 		log.Println("table api_keys does not exist, creating it")
-		if _, err := r.db.Exec(CREATE_APIKEY_TABLE); err != nil {
+		if _, err := r.db.Exec(CREATE_OAUTH2_TOKENS_TABLE); err != nil {
 			log.Printf("failed to create api_keys table: %v\n", err)
 			return err
 		}
